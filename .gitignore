@@ -1,0 +1,32 @@
+*.iml
+.gradle/
+.idea/
+local.properties
+**/build/
+build/
+captures/
+.DS_Store
+
+# Android Studio / native build output
+.externalNativeBuild/
+.cxx/
+bin/
+gen/
+out/
+tmp/
+
+# Compiled and packaged artifacts
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# Logs and local reports
+*.log
+*.hprof
+reports/
+
+# Signing credentials
+*.jks
+*.keystore

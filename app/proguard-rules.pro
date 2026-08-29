@@ -1,0 +1,6 @@
+-keep class com.byd.aeri.projectCore.bluetooth.btkey.codec.BtJniUtils { *; }
+-keep class com.byd.aeri.projectCore.bluetooth.btkey.codec.Utils { *; }
+-keep class com.byd.aeri.projectCore.bluetooth.bean.** { *; }
+-keep class com.sign.overseas.SignCheck { *; }
+-keepclasseswithmembernames class * { native <methods>; }
+-dontwarn org.conscrypt.**
