@@ -141,9 +141,16 @@ jobs:
             --out "$apk" app/build/outputs/apk/release/app-release-unsigned.apk
           "$build_tools/apksigner" verify --verbose "$apk"
           "$build_tools/zipalign" -c 4 "$apk"
-          cp app/build/outputs/mapping/release/mapping.txt release/mapping.txt
           cd release
-          sha256sum ./*.apk mapping.txt > SHA256SUMS.txt
+          sha256sum ./*.apk > SHA256SUMS.txt
+
+      - name: Upload R8 mapping for diagnostics
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: android-mapping-v${{ steps.version.outputs.name }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Upload release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -151,7 +158,6 @@ jobs:
           name: android-release
           path: |
             release/*.apk
-            release/mapping.txt
             release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
@@ -184,8 +190,8 @@ jobs:
             flags+=(--prerelease --latest=false)
           fi
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" ./*.apk mapping.txt SHA256SUMS.txt --clobber
+            gh release upload "$GITHUB_REF_NAME" ./*.apk SHA256SUMS.txt --clobber
           else
-            gh release create "$GITHUB_REF_NAME" ./*.apk mapping.txt SHA256SUMS.txt \
+            gh release create "$GITHUB_REF_NAME" ./*.apk SHA256SUMS.txt \
               --verify-tag --title "BYD Keyless $GITHUB_REF_NAME" --generate-notes "${flags[@]}"
           fi
