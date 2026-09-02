@@ -1,6 +1,6 @@
 # Publication checks
 
-The repository is prepared for a public source upload, not an APK release. Publication preparation does not create a GitHub repository, commit changes, rewrite history or push anything. Native binaries are retained and no project `LICENSE` is added; see [Third-party components](../THIRD_PARTY.md).
+This document records the original public-source preparation checks. For the current automatic APK release workflow, see [Release setup and publishing](RELEASING.md). Native binaries are retained and no project `LICENSE` is added; see [Third-party components](../THIRD_PARTY.md).
 
 ## Before uploading
 
@@ -37,4 +37,4 @@ Remaining warning categories include newer dependency versions, attributes ignor
 
 The existing AGP 8.3.2 / compile SDK 36 combination also retains `android.suppressUnsupportedCompileSdk=36`; SDK XML/tooling compatibility warnings can occur. Dependency/toolchain upgrades and application behavior fixes are intentionally outside this preparation. A successful build does not imply that this old plugin officially supports SDK 36.
 
-GitHub Actions runs the same unit-test/lint/debug-build tasks on Ubuntu and uploads only reports for 14 days. It does not use a BYD account, run connected-device tests, publish APKs or configure release signing. The workflow uses read-only repository permissions and commit-pinned actions; review upstream changes before updating those pins.
+GitHub Actions runs the same unit-test/lint/debug-build tasks on Ubuntu and retains reports for 14 days. Version-tag pushes additionally build, sign and publish an APK as described in [Releasing](RELEASING.md). CI does not use a BYD account or run connected-device tests. Build jobs use read-only repository permissions; only the release publication job can write releases. Actions are pinned to commits; review upstream changes before updating those pins.

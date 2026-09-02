@@ -27,6 +27,10 @@ Device captures of the English interface, with automatic access disabled. The di
 
 Select a screenshot to view it at full resolution. See the [screenshot capture notes](docs/screenshots/README.md) for capture conditions and privacy edits.
 
+## Download
+
+Install the signed ARM64 APK from [GitHub Releases](https://github.com/VitalyArt/byd-keyless/releases) when a release is available. Version tags publish new builds automatically after CI succeeds; see [Release setup and publishing](docs/RELEASING.md). Until the first release, build from source below.
+
 ## Build
 
 Requirements:
@@ -69,7 +73,7 @@ This uses Android's local debug signing key. No release signing credentials are 
 
 ## First use
 
-1. Install the debug APK on an ARM64 Android phone.
+1. Install the release APK (or a locally built debug APK) on an ARM64 Android phone.
 2. Create a QR code in the app, scan it in BYD AUTO, choose the Sealion 7 and approve the watch sign-in.
 3. Grant the requested Bluetooth/location and notification permissions, then start the key while the app is visible.
 4. Verify manual unlock and lock while standing next to the parked car.
@@ -113,7 +117,7 @@ Before testing on a real vehicle, run the staged sequence: connect/read only →
 
 Unit tests cover protocol formatting/cryptography, mocked Watch API flows, command policies, proximity, quick controls, manifest permissions, launcher shortcuts and translations. They do not require a BYD account or a vehicle.
 
-The [Android CI workflow](.github/workflows/android.yml) runs unit tests, Android lint and a debug build on pushes and pull requests, and retains test/lint reports. It does not publish APKs, sign releases or execute commands against a vehicle. Reports are available locally under `app/build/reports/` and `app/build/test-results/`.
+The [Android CI workflow](.github/workflows/android.yml) runs unit tests, Android lint and a debug build on pushes and pull requests, and retains test/lint reports. Version-tag pushes also build, sign and publish a release APK after the checks succeed; signing requires the one-time [release setup](docs/RELEASING.md). CI does not execute commands against a vehicle. Reports are available locally under `app/build/reports/` and `app/build/test-results/`.
 
 The native instrumentation smoke test requires a connected ARM64 Android device and is separate from CI:
 

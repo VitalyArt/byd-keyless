@@ -11,8 +11,9 @@ android {
         applicationId = "com.vitalyart.bydkeyless"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = providers.gradleProperty("appVersionCode").orElse("1").get().toInt()
+        versionName = providers.gradleProperty("appVersionName").orElse("0.1.0").get()
+        require(versionCode in 1..2100000000) { "appVersionCode must be between 1 and 2100000000" }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
         ndk.abiFilters += "arm64-v8a"
