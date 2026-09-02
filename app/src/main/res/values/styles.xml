@@ -24,7 +24,7 @@
         <item name="android:textSize">11sp</item>
         <item name="android:textStyle">bold</item>
     </style>
-    <color name="launcher_background">#2B0000</color>
+    <color name="launcher_background">#070A0D</color>
     <color name="widget_ready">#E5FF56</color>
     <color name="widget_working">#FFCA58</color>
     <color name="widget_error">#FF6B6B</color>

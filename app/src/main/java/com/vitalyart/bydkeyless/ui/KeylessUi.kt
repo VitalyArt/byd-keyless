@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -143,10 +144,11 @@ private fun AuthorizationScreen(state: MainUiState, begin: () -> Unit, selectCou
 
 @Composable
 private fun BrandMark() {
-    Box(
-        Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(Electric, Color(0xFF46AEEA)))),
-        contentAlignment = Alignment.Center,
-    ) { Icon(Icons.Rounded.Key, null, tint = ElectricDark, modifier = Modifier.size(36.dp)) }
+    Image(
+        painter = painterResource(R.drawable.ic_launcher_artwork),
+        contentDescription = null,
+        modifier = Modifier.size(72.dp).clip(RoundedCornerShape(24.dp)),
+    )
 }
 
 @Composable
