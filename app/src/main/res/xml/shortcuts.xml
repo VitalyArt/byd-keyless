@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_notification_key"
+        android:shortcutId="quick_unlock"
+        android:shortcutLongLabel="@string/shortcut_unlock_long"
+        android:shortcutShortLabel="@string/action_unlock">
+        <intent
+            android:action="com.vitalyart.bydkeyless.quick.UNLOCK"
+            android:targetClass="com.vitalyart.bydkeyless.quick.QuickCommandActivity"
+            android:targetPackage="com.vitalyart.bydkeyless" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_notification_key"
+        android:shortcutId="quick_lock"
+        android:shortcutLongLabel="@string/shortcut_lock_long"
+        android:shortcutShortLabel="@string/action_lock">
+        <intent
+            android:action="com.vitalyart.bydkeyless.quick.LOCK"
+            android:targetClass="com.vitalyart.bydkeyless.quick.QuickCommandActivity"
+            android:targetPackage="com.vitalyart.bydkeyless" />
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_notification_key"
+        android:shortcutId="quick_trunk"
+        android:shortcutLongLabel="@string/shortcut_trunk_long"
+        android:shortcutShortLabel="@string/widget_trunk">
+        <intent
+            android:action="com.vitalyart.bydkeyless.quick.OPEN_TRUNK"
+            android:targetClass="com.vitalyart.bydkeyless.quick.QuickCommandActivity"
+            android:targetPackage="com.vitalyart.bydkeyless" />
+    </shortcut>
+</shortcuts>

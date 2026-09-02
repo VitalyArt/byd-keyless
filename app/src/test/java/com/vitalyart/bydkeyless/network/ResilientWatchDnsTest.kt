@@ -11,16 +11,15 @@ class ResilientWatchDnsTest {
         val expected = listOf(InetAddress.getByAddress(byteArrayOf(10, 0, 0, 1)))
         var available = true
         val system = dns { if (available) expected else throw UnknownHostException("transient") }
-        val dns = ResilientWatchDns(system, emptyMap())
+        val dns = ResilientWatchDns(system)
         assertEquals(expected, dns.lookup("example.test"))
         available = false
         assertEquals(expected, dns.lookup("example.test"))
     }
 
-    @Test fun usesBootstrapOnlyWhenSystemHasNoAnswer() {
-        val expected = listOf(InetAddress.getByAddress(byteArrayOf(10, 0, 0, 2)))
-        val dns = ResilientWatchDns(dns { throw UnknownHostException("missing") }, mapOf("byd.test" to expected))
-        assertEquals(expected, dns.lookup("byd.test"))
+    @Test(expected = UnknownHostException::class)
+    fun propagatesDnsFailureWhenThereIsNoCachedAnswer() {
+        ResilientWatchDns(dns { throw UnknownHostException("missing") }).lookup("byd.test")
     }
 
     private fun dns(block: (String) -> List<InetAddress>) = object : Dns {

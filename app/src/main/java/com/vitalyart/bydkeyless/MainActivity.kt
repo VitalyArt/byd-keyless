@@ -112,5 +112,7 @@ class MainActivity : AppCompatActivity() {
         startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }
 
-    private companion object { const val PERMISSIONS_REQUESTED = "nearby_requested" }
+    private companion object {
+        const val PERMISSIONS_REQUESTED = "nearby_requested"
+    }
 }

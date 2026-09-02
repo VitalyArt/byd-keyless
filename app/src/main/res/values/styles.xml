@@ -8,5 +8,25 @@
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">#070A0D</item>
     </style>
+    <style name="Theme.BydKeyless.Transparent" parent="Theme.BydKeyless">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">false</item>
+    </style>
+    <style name="WidgetQuickLabel" parent="android:style/Widget.TextView">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:ellipsize">end</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:textColor">#F4F7F6</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
     <color name="launcher_background">#2B0000</color>
+    <color name="widget_ready">#E5FF56</color>
+    <color name="widget_working">#FFCA58</color>
+    <color name="widget_error">#FF6B6B</color>
+    <color name="widget_muted">#91A4A8</color>
 </resources>

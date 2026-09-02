@@ -112,11 +112,10 @@ class SecureSessionStore(context: Context) {
             near, far, unlockDistanceMeters, lockDistanceMeters,
         ) else null
     }
-    fun saveCalibration(value: ProximityCalibration) {
+    fun saveCalibration(value: ProximityCalibration): Boolean =
         prefs.edit().putInt("near_rssi", value.nearRssi).putInt("far_rssi", value.farRssi)
             .putFloat("unlock_distance_meters", value.unlockDistanceMeters.toFloat())
-            .putFloat("lock_distance_meters", value.lockDistanceMeters.toFloat()).apply()
-    }
+            .putFloat("lock_distance_meters", value.lockDistanceMeters.toFloat()).commit()
     var unlockDistanceMeters: Double
         get() = prefs.getFloat("unlock_distance_meters", ProximityCalibration.DEFAULT_UNLOCK_DISTANCE_METERS.toFloat()).toDouble()
         set(value) { prefs.edit().putFloat("unlock_distance_meters", value.toFloat()).apply() }

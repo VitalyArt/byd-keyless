@@ -11,7 +11,10 @@ import com.vitalyart.bydkeyless.ble.ActionAvailability
 import com.vitalyart.bydkeyless.ble.CommandAvailability
 import com.vitalyart.bydkeyless.model.*
 import com.vitalyart.bydkeyless.network.WatchRegions
+import com.vitalyart.bydkeyless.network.WatchNetworkException
+import com.vitalyart.bydkeyless.network.WatchNetworkFailure
 import com.vitalyart.bydkeyless.service.KeylessService
+import com.vitalyart.bydkeyless.quick.QuickCommandPhase
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -56,6 +59,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { graph.ble.connectionState.collect { _ui.update { s -> s.copy(bleState = it) } } }
         viewModelScope.launch { graph.ble.telemetry.collect { _ui.update { s -> s.copy(telemetry = it) } } }
         viewModelScope.launch { graph.proximity.state.collect { _ui.update { s -> s.copy(proximity = it) } } }
+        viewModelScope.launch { graph.quickCommands.state.collect { quick ->
+            when (quick.phase) {
+                QuickCommandPhase.IDLE -> Unit
+                QuickCommandPhase.CONNECTING, QuickCommandPhase.EXECUTING ->
+                    _ui.update { it.copy(commandResult = UiMessage(R.string.message_executing), error = null, commandInProgress = quick.command) }
+                QuickCommandPhase.SUCCESS -> {
+                    _ui.update { it.copy(commandResult = UiMessage(R.string.message_command_success), error = null, commandInProgress = null) }
+                    scheduleMessageClear()
+                }
+                QuickCommandPhase.ERROR -> {
+                    _ui.update { it.copy(error = UiMessage((quick.error ?: CommandError.KEY_NOT_READY).messageResource()), commandResult = null, commandInProgress = null) }
+                    scheduleMessageClear()
+                }
+            }
+        } }
     }
 
     fun beginAuthorization() {
@@ -68,7 +86,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }.onSuccess { session ->
                 _ui.update { it.copy(loading = false, qrSession = session, qrStatus = session.status) }
                 poll(session)
-            }.onFailure { _ui.update { it.copy(loading = false, error = UiMessage(R.string.error_network)) } }
+            }.onFailure { failure -> _ui.update { it.copy(loading = false, error = UiMessage(networkError(failure))) } }
         }
     }
 
@@ -90,7 +108,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             delay(3_000L)
             val result = runCatching { graph.auth.checkQrSession(session) }
             if (result.isFailure) {
-                _ui.update { state -> state.copy(error = UiMessage(R.string.error_qr_retry)) }
+                _ui.update { state -> state.copy(error = UiMessage(networkError(result.exceptionOrNull() ?: RuntimeException()))) }
                 continue
             }
             val status = result.getOrThrow()
@@ -107,15 +125,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun finishAuthorization(session: WatchQrSession) {
         _ui.update { it.copy(loading = true) }
-        runCatching {
-            val token = graph.auth.gainToken(session)
-            val profile = graph.auth.loadVehicleProfile(token)
-            require(profile.hasValidKey()) { "BYD did not issue a valid Bluetooth key" }
-            graph.store.saveSession(token, profile)
-            token to profile
-        }.onSuccess { (token, profile) ->
-            _ui.update { it.copy(loading = false, token = token, profile = profile, qrSession = null, error = null) }
-        }.onFailure { _ui.update { it.copy(loading = false, error = UiMessage(R.string.error_network)) } }
+        var failure: Throwable? = null
+        for (attempt in 1..3) {
+            try {
+                val token = graph.auth.gainToken(session)
+                val profile = graph.auth.loadVehicleProfile(token)
+                if (profile.hasValidKey()) {
+                    graph.store.saveSession(token, profile)
+                    _ui.update { it.copy(loading = false, token = token, profile = profile, qrSession = null, error = null) }
+                    return
+                }
+                failure = IllegalArgumentException("BYD did not issue a valid Bluetooth key")
+            } catch (error: Exception) {
+                failure = error
+            }
+            if (attempt < 3) delay(2_000L)
+        }
+        _ui.update { it.copy(loading = false, error = UiMessage(networkError(failure ?: RuntimeException()))) }
     }
 
     fun startKey() {
@@ -131,9 +157,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     _ui.update { it.copy(profile = refreshed, error = null) }
                     refreshed
                 },
-                onFailure = {
+                onFailure = { failure ->
                     if (!current.hasValidKey()) {
-                        _ui.update { it.copy(error = UiMessage(R.string.error_network)) }
+                        _ui.update { it.copy(error = UiMessage(networkError(failure))) }
                         return@launch
                     }
                     current
@@ -204,17 +230,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val near = _ui.value.nearSample ?: return
         val far = _ui.value.farSample ?: return
         if (near <= far) { showError(UiMessage(R.string.error_near_signal)); return }
-        graph.store.saveCalibration(ProximityCalibration(near, far, _ui.value.unlockDistanceMeters, _ui.value.lockDistanceMeters))
+        val calibration = ProximityCalibration(near, far, _ui.value.unlockDistanceMeters, _ui.value.lockDistanceMeters)
+        val saved = graph.store.saveCalibration(calibration)
+        val persisted = graph.store.calibration()
+        if (!saved || persisted?.nearRssi != near || persisted.farRssi != far) {
+            showError(UiMessage(R.string.error_calibration_save))
+            return
+        }
         _ui.update { it.copy(calibrated = true, commandResult = UiMessage(R.string.calibration_saved), error = null) }
         scheduleMessageClear()
-        configureKeyless(_ui.value.mode, _ui.value.autoUnlock, _ui.value.autoLock)
+        graph.proximity.configure(_ui.value.mode, persisted, _ui.value.autoUnlock, _ui.value.autoLock)
     }
 
     fun configureKeyless(mode: KeylessMode = _ui.value.mode, autoUnlock: Boolean = _ui.value.autoUnlock, autoLock: Boolean = _ui.value.autoLock) {
         graph.store.keylessMode = mode; graph.store.autoUnlock = autoUnlock; graph.store.autoLock = autoLock
         graph.proximity.configure(mode, graph.store.calibration(), autoUnlock, autoLock)
         _ui.update { it.copy(mode = mode, autoUnlock = autoUnlock, autoLock = autoLock) }
-        if (mode == KeylessMode.OFF) KeylessService.stop(getApplication()) else runCatching { KeylessService.start(getApplication()) }
+        if (mode == KeylessMode.OFF) KeylessService.stop(getApplication())
+        else runCatching { KeylessService.start(getApplication()) }
     }
 
     fun setProximityDistances(unlockMeters: Double = _ui.value.unlockDistanceMeters, lockMeters: Double = _ui.value.lockDistanceMeters) {
@@ -256,6 +289,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             watchCountryCode = WatchRegions.byCode(graph.store.watchCountryCode).code,
             language = graph.store.language,
         )
+    }
+
+    private fun networkError(failure: Throwable): Int = when ((failure as? WatchNetworkException)?.failure) {
+        WatchNetworkFailure.DNS -> R.string.error_dns
+        WatchNetworkFailure.TIMEOUT -> R.string.error_timeout
+        WatchNetworkFailure.TLS -> R.string.error_tls
+        WatchNetworkFailure.CONNECTION -> R.string.error_connection
+        null -> if (failure is IllegalArgumentException && failure.message?.contains("Bluetooth key") == true) {
+            R.string.error_key_not_ready
+        } else R.string.error_network
     }
 
     private fun scheduleMessageClear() {

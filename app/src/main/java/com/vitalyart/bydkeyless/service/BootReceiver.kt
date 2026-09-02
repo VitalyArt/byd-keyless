@@ -16,8 +16,10 @@ import com.vitalyart.bydkeyless.model.KeylessMode
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         val graph = (context.applicationContext as KeylessApplication).graph
-        if (graph.store.keylessMode == KeylessMode.OFF || graph.store.loadSession()?.second?.hasValidKey() != true) return
-        runCatching { KeylessService.start(context) }.onFailure { showResumeNotification(context) }
+        if (graph.store.loadSession()?.second?.hasValidKey() != true) return
+        if (graph.store.keylessMode != KeylessMode.OFF) {
+            runCatching { KeylessService.start(context) }.onFailure { showResumeNotification(context) }
+        }
     }
 
     private fun showResumeNotification(context: Context) {

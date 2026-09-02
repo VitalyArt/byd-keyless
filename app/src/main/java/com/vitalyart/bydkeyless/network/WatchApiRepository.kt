@@ -1,6 +1,9 @@
 package com.vitalyart.bydkeyless.network
 
+import android.util.Log
 import com.vitalyart.bydkeyless.model.*
+import java.io.IOException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
@@ -11,11 +14,13 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.net.SocketTimeoutException
 import java.util.Locale
 import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SSLException
 import kotlin.math.abs
 
 data class WatchRegion(val code: String, val name: String, val node: String, val timeZone: String)
@@ -23,6 +28,16 @@ data class WatchRegion(val code: String, val name: String, val node: String, val
 private const val WATCH_BRAND = "BYD"
 private const val WATCH_MODEL = "Keyless"
 private const val WATCH_NAME = "BYD Keyless"
+private const val WATCH_LOG_TAG = "BydWatchApi"
+private const val NETWORK_ATTEMPTS = 3
+
+enum class WatchNetworkFailure { DNS, TIMEOUT, TLS, CONNECTION }
+
+class WatchNetworkException(
+    val failure: WatchNetworkFailure,
+    val endpoint: String,
+    cause: Throwable,
+) : IOException("$failure while requesting $endpoint", cause)
 
 object WatchRegions {
     private val nodeBaseUrls = mapOf(
@@ -279,18 +294,49 @@ class BydWatchAuthRepository(
         "countryCode" to config.countryCode,
     )
 
-    private suspend fun send(path: String, body: JSONObject, key: String): JSONObject = withContext(Dispatchers.IO) {
+    private suspend fun send(path: String, body: JSONObject, key: String): JSONObject {
+        var lastFailure: WatchNetworkException? = null
+        repeat(NETWORK_ATTEMPTS) { attempt ->
+            try {
+                return sendOnce(path, body, key)
+            } catch (failure: WatchNetworkException) {
+                lastFailure = failure
+                if (attempt + 1 < NETWORK_ATTEMPTS) {
+                    safeLog { Log.w(WATCH_LOG_TAG, "${failure.failure} for $path; retry ${attempt + 2}/$NETWORK_ATTEMPTS") }
+                    delay(750L * (attempt + 1))
+                }
+            }
+        }
+        throw requireNotNull(lastFailure)
+    }
+
+    private suspend fun sendOnce(path: String, body: JSONObject, key: String): JSONObject = withContext(Dispatchers.IO) {
         val request = Request.Builder().url(config.baseUrl + path)
             .header("Accept-Encoding", "identity").header("User-Agent", "okhttp/4.12.0")
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
-        client.newCall(request).execute().use { response ->
-            check(response.isSuccessful) { "BYD returned HTTP ${response.code}" }
-            val raw = response.body?.string().orEmpty()
-            var envelope = JSONObject(raw)
-            if (envelope.has("response") && envelope.opt("response") is String) envelope = JSONObject(envelope.getString("response"))
-            val code = envelope.optString("code", "0")
-            check(code == "0") { envelope.optString("message", "BYD watch API error $code") }
-            WatchCryptography.decryptResponse(envelope.optString("respondData"), key)
+        try {
+            client.newCall(request).execute().use { response ->
+                safeLog { Log.d(WATCH_LOG_TAG, "${request.method} ${request.url.host}$path -> HTTP ${response.code}") }
+                check(response.isSuccessful) { "BYD returned HTTP ${response.code}" }
+                val raw = response.body?.string().orEmpty()
+                var envelope = JSONObject(raw)
+                if (envelope.has("response") && envelope.opt("response") is String) envelope = JSONObject(envelope.getString("response"))
+                val code = envelope.optString("code", "0")
+                check(code == "0") { envelope.optString("message", "BYD watch API error $code") }
+                WatchCryptography.decryptResponse(envelope.optString("respondData"), key)
+            }
+        } catch (failure: UnknownHostException) {
+            safeLog { Log.e(WATCH_LOG_TAG, "DNS failure for ${request.url.host}$path", failure) }
+            throw WatchNetworkException(WatchNetworkFailure.DNS, request.url.host, failure)
+        } catch (failure: SocketTimeoutException) {
+            safeLog { Log.e(WATCH_LOG_TAG, "Timeout for ${request.url.host}$path", failure) }
+            throw WatchNetworkException(WatchNetworkFailure.TIMEOUT, request.url.host, failure)
+        } catch (failure: SSLException) {
+            safeLog { Log.e(WATCH_LOG_TAG, "TLS failure for ${request.url.host}$path", failure) }
+            throw WatchNetworkException(WatchNetworkFailure.TLS, request.url.host, failure)
+        } catch (failure: IOException) {
+            safeLog { Log.e(WATCH_LOG_TAG, "Connection failure for ${request.url.host}$path", failure) }
+            throw WatchNetworkException(WatchNetworkFailure.CONNECTION, request.url.host, failure)
         }
     }
 
@@ -299,15 +345,9 @@ class BydWatchAuthRepository(
 
 fun generateWatchImei(): String = WatchCryptography.md5(UUID.randomUUID().toString().replace("-", "").uppercase(Locale.US))
 
-/**
- * Android/OEM private DNS occasionally loses the regional BYD record between QR creation
- * and polling. Preserve successful answers and fail over to a TLS-verified bootstrap IP.
- */
+/** Preserve a successful system-DNS answer across a transient resolver failure. */
 class ResilientWatchDns(
     private val delegate: Dns = Dns.SYSTEM,
-    private val fallback: Map<String, List<InetAddress>> = mapOf(
-        "dilinkappoversea-uz.byd.auto" to listOf(InetAddress.getByAddress(byteArrayOf(185.toByte(), 203.toByte(), 239.toByte(), 242.toByte()))),
-    ),
 ) : Dns {
     private val cache = ConcurrentHashMap<String, List<InetAddress>>()
 
@@ -315,9 +355,13 @@ class ResilientWatchDns(
         return try {
             delegate.lookup(hostname).also { addresses -> if (addresses.isNotEmpty()) cache[hostname] = addresses }
         } catch (failure: UnknownHostException) {
-            cache[hostname] ?: fallback[hostname] ?: throw failure
+            cache[hostname] ?: throw failure
         }
     }
+}
+
+private inline fun safeLog(write: () -> Int) {
+    runCatching { write() }
 }
 
 private fun defaultWatchHttpClient(config: WatchConfig) = OkHttpClient.Builder()

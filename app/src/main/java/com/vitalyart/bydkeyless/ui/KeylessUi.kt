@@ -223,7 +223,13 @@ private fun QrCard(payload: String, status: WatchQrStatus) {
 private enum class MainTab { HOME, CONTROLS, SETTINGS }
 
 @Composable
-private fun MainShell(state: MainUiState, vm: MainViewModel, keyAction: () -> Unit, backgroundSettings: () -> Unit, dangerous: (VehicleCommand) -> Unit) {
+private fun MainShell(
+    state: MainUiState,
+    vm: MainViewModel,
+    keyAction: () -> Unit,
+    backgroundSettings: () -> Unit,
+    dangerous: (VehicleCommand) -> Unit,
+) {
     var tabName by rememberSaveable { mutableStateOf(MainTab.HOME.name) }
     val tab = runCatching { MainTab.valueOf(tabName) }.getOrDefault(MainTab.HOME)
     Scaffold(
@@ -461,7 +467,13 @@ private fun ControlRow(command: VehicleCommand, availability: ActionAvailability
 }
 
 @Composable
-private fun SettingsScreen(state: MainUiState, vm: MainViewModel, keyAction: () -> Unit, backgroundSettings: () -> Unit, modifier: Modifier) {
+private fun SettingsScreen(
+    state: MainUiState,
+    vm: MainViewModel,
+    keyAction: () -> Unit,
+    backgroundSettings: () -> Unit,
+    modifier: Modifier,
+) {
     var confirmLogout by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         modifier.fillMaxSize().padding(horizontal = 20.dp),
@@ -496,6 +508,7 @@ private fun SettingsScreen(state: MainUiState, vm: MainViewModel, keyAction: () 
             SectionCard(R.string.safety_title, Icons.Rounded.Security) {
                 SettingSwitch(R.string.experimental_commands, state.experimental, true, vm::setExperimental)
                 Text(stringResource(R.string.experimental_warning), color = if (state.experimental) Critical else TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
+                Text(stringResource(R.string.quick_controls_warning), color = Critical, fontSize = 12.sp, lineHeight = 17.sp)
             }
         }
         item { LanguageSetting(state.language, vm::setLanguage) }
@@ -560,6 +573,11 @@ private fun CalibrationCard(state: MainUiState, vm: MainViewModel) {
         }
         Button(vm::saveCalibration, enabled = state.nearSample != null && state.farSample != null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
             Text(stringResource(R.string.save_calibration))
+        }
+        when {
+            state.commandResult?.resourceId == R.string.calibration_saved -> MessageCard(state.commandResult, false)
+            state.error?.resourceId == R.string.error_calibration_save || state.error?.resourceId == R.string.error_near_signal ->
+                MessageCard(state.error, true)
         }
     }
 }

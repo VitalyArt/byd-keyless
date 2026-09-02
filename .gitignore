@@ -30,3 +30,36 @@ reports/
 # Signing credentials
 *.jks
 *.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+key.properties
+keystore.properties
+signing.properties
+
+# Local secrets and environment overrides (examples must contain placeholders only)
+.env
+.env.*
+!.env.example
+!.env.sample
+*.local.properties
+secrets.properties
+secrets/
+
+# Device/session dumps, databases and network captures
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.dump
+*.dmp
+*.pcap
+*.pcapng
+*.har
+bugreport*.zip
+dumps/
+
+# Keep Gradle Wrapper and bundled ARM64 .so libraries versioned.

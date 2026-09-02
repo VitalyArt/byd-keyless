@@ -35,6 +35,10 @@ fun CommandError.messageResource(): Int = when (this) {
     CommandError.VEHICLE_TIMEOUT -> R.string.error_vehicle_timeout
     CommandError.CLOUD_REJECTED -> R.string.error_cloud_rejected
     CommandError.NO_SESSION -> R.string.error_no_session
+    CommandError.BLUETOOTH_OFF -> R.string.error_bluetooth_off
+    CommandError.PERMISSION_DENIED -> R.string.error_permissions_denied
+    CommandError.CONNECTION_TIMEOUT -> R.string.error_connection_timeout
+    CommandError.COMMAND_BUSY -> R.string.error_command_busy
 }
 
 @StringRes

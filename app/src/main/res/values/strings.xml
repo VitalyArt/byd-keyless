@@ -106,6 +106,7 @@
     <string name="captured_signal">Captured: %1$s</string>
     <string name="save_calibration">Save calibration</string>
     <string name="calibration_saved">Calibration saved</string>
+    <string name="error_calibration_save">Could not save calibration. Please try again.</string>
     <string name="safety_title">Safety</string>
     <string name="experimental_commands">Experimental controls</string>
     <string name="experimental_warning">Only vehicle-confirmed experimental actions will appear. Actions that can move the vehicle require device authentication.</string>
@@ -131,6 +132,10 @@
     <string name="message_command_success">Vehicle confirmed the command</string>
     <string name="error_unknown">Something went wrong. Try again.</string>
     <string name="error_network">Could not reach BYD. Check your connection and try again.</string>
+    <string name="error_dns">Could not resolve the BYD server address. Check Private DNS or VPN.</string>
+    <string name="error_timeout">BYD did not respond in time. Check your connection and try again.</string>
+    <string name="error_tls">Secure connection to BYD failed. Check the device date and network.</string>
+    <string name="error_connection">Connection to BYD was interrupted. Check your connection and try again.</string>
     <string name="error_qr_retry">Connection interrupted. Retrying…</string>
     <string name="error_near_signal">The near signal must be stronger than the far signal.</string>
     <string name="error_no_profile">Vehicle profile is unavailable</string>
@@ -151,6 +156,18 @@
     <string name="key_service_connected">Bluetooth key connected</string>
     <string name="key_service_resume">Tap to resume the key</string>
     <string name="channel_key_name">Digital key</string>
-    <string name="key_service_stop">Stop</string>
+    <string name="quick_connecting">Connecting for command…</string>
+    <string name="error_connection_timeout">Could not connect to the vehicle in time</string>
+    <string name="error_command_busy">Another vehicle command is already running</string>
+    <string name="widget_description">Quick vehicle lock and trunk controls</string>
+    <string name="widget_connected">Connected</string>
+    <string name="widget_connecting">Connecting…</string>
+    <string name="widget_disconnected">Tap a command to connect</string>
+    <string name="widget_error">Connection error</string>
+    <string name="widget_trunk">Trunk</string>
+    <string name="shortcut_unlock_long">Unlock BYD vehicle</string>
+    <string name="shortcut_lock_long">Lock BYD vehicle</string>
+    <string name="shortcut_trunk_long">Open BYD vehicle trunk</string>
+    <string name="quick_controls_warning">Quick controls run immediately without authentication and can be used from the lock screen.</string>
     <string name="region_uz">Uzbekistan</string><string name="region_kz">Kazakhstan</string><string name="region_no">Norway</string><string name="region_nl">Netherlands</string><string name="region_de">Germany</string><string name="region_gb">United Kingdom</string><string name="region_fr">France</string><string name="region_it">Italy</string><string name="region_es">Spain</string><string name="region_sg">Singapore</string><string name="region_au">Australia</string><string name="region_br">Brazil</string><string name="region_jp">Japan</string><string name="region_om">Oman</string><string name="region_mx">Mexico</string><string name="region_id">Indonesia</string><string name="region_tr">Türkiye</string><string name="region_kr">South Korea</string><string name="region_in">India</string><string name="region_vnm">Vietnam</string><string name="region_sa">Saudi Arabia</string>
 </resources>
