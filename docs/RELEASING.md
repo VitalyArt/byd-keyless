@@ -52,7 +52,7 @@ The release contains:
 - `BYDKeyless-v0.1.0-arm64-v8a.apk` — signed, minified release build for Android 8.0+ on ARM64.
 - `SHA256SUMS.txt` — SHA-256 checksum for the APK.
 
-The R8 `mapping.txt` file is stored separately in the tag run's GitHub Actions artifact `android-mapping-v<VERSION>` for 90 days. It is used to interpret crash stack traces from that exact build and is not attached to the GitHub Release. Download and archive the artifact before it expires if you need longer-term crash diagnostics.
+R8 generates `mapping.txt` during the build, but CI does not upload it to GitHub Actions artifacts or GitHub Releases.
 
 GitHub generates release notes from repository changes. Re-running a failed tag run updates assets on an existing release instead of creating a duplicate; existing release notes are preserved. Keep published tags on their original commits and use a new version tag for code changes.
 

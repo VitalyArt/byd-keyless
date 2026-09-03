@@ -144,14 +144,6 @@ jobs:
           cd release
           sha256sum ./*.apk > SHA256SUMS.txt
 
-      - name: Upload R8 mapping for diagnostics
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: android-mapping-v${{ steps.version.outputs.name }}
-          path: app/build/outputs/mapping/release/mapping.txt
-          if-no-files-found: error
-          retention-days: 90
-
       - name: Upload release assets
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
