@@ -67,3 +67,16 @@ Version overrides are optional and do not change the default development version
 ```
 
 This produces `app/build/outputs/apk/release/app-release-unsigned.apk`. CI signs and verifies it with Android SDK Build-Tools 34.0.0 before uploading. A local unsigned APK cannot be installed as-is. Tests do not connect to a vehicle; real-device and vehicle validation remain separate.
+
+## Release startup check
+
+Test the signed, minified release APK on an ARM64 device before distributing it. A successful debug launch or CI build does not verify release startup: R8 can affect code accessed through reflection. For example, Lifecycle 2.8 with Compose 1.6 caused `CompositionLocal LocalLifecycleOwner not present` at startup only in the minified build. The app uses Lifecycle 2.8.3 and an explicit keep rule for Compose's reflected lifecycle-owner getter: the library's conditional rule alone did not preserve it with the current AGP 8.3.2 toolchain.
+
+Install the release APK with `adb install -r`, then cold-start the main activity:
+
+```bash
+adb shell am force-stop com.vitalyart.bydkeyless
+adb shell am start -W -n com.vitalyart.bydkeyless/.MainActivity
+```
+
+Wait at least ten seconds and confirm the main screen remains visible, `adb shell pidof com.vitalyart.bydkeyless` still returns a process, and there is no new crash for this package in `adb logcat -b crash -d`. `am start` reporting `Status: ok` alone is insufficient: rendering can crash immediately afterwards. Repeat a cold start and a background/foreground transition. Keep this check limited to opening the UI; signing in, starting the key and vehicle commands are separate manual tests.
