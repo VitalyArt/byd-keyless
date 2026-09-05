@@ -79,7 +79,7 @@ This uses Android's local debug signing key. No release signing credentials are 
 4. Verify manual unlock and lock while standing next to the parked car.
 5. Capture RSSI at approximately 1 m and 5 m before enabling automatic access.
 
-Auto unlock and auto lock remain disabled until calibration and successful manual lock/unlock. Auto lock additionally requires the latest BLE command response to confirm all closures are closed.
+Auto unlock and auto lock remain disabled until calibration and successful manual lock/unlock. Auto lock additionally requires a BLE command response no older than 30 seconds to confirm closures are closed. Calibration collects 8 signal samples. An unconfirmed automatic command pauses automation until a manual lock/unlock succeeds. See [background reliability changes and device checks](docs/BACKGROUND-RELIABILITY.md).
 
 ## Permissions
 
@@ -94,7 +94,7 @@ Auto unlock and auto lock remain disabled until calibration and successful manua
 - Add the **BYD Keyless** widget from the Android widget picker for separate Unlock, Lock and Trunk buttons. The same actions are available as launcher shortcuts by long-pressing the app icon.
 - Quick actions connect the BLE key on demand and wait up to 20 seconds for authentication before failing.
 
-Quick controls intentionally execute without device authentication and may be available from the lock screen. Only enable notification access on a phone you trust.
+Notification and widget controls execute without device authentication and may be available from the lock screen. Launcher shortcuts now show a confirmation dialog before sending a command. Only enable notification access on a phone you trust.
 
 ## Privacy and credentials
 

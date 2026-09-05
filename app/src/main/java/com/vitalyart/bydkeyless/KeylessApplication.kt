@@ -31,8 +31,8 @@ class KeylessApplication : Application() {
             else LocaleListCompat.forLanguageTags(language),
         )
         val native = BydNativeFacade()
-        val ble = AndroidBleVehicleController(this, native, keylessMode = { store.keylessMode })
-        val proximity = DefaultProximityKeyManager(ble, store)
+        val ble = AndroidBleVehicleController(this, native, calibration = store::calibration, keylessMode = { store.keylessMode })
+        val proximity = DefaultProximityKeyManager(ble, canUnlock = { store.manualUnlockVerified }, canLock = { store.manualLockVerified })
         val quickCommands = QuickCommandExecutor(
             sessionProvider = store::loadSession,
             controller = ble,

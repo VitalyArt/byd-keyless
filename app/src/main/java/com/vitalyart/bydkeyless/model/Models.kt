@@ -101,6 +101,18 @@ data class VehicleTelemetry(
     val approximateMeters: Double? = null,
     val doorState: DoorState = DoorState.UNKNOWN,
     val allClosuresClosed: Boolean? = null,
+    val rssiAtMillis: Long? = null,
+    val rssiSequence: Long = 0,
+    val closuresAtMillis: Long? = null,
+    val doorStateAtMillis: Long? = null,
+    val connectionGeneration: Long = 0,
+)
+
+data class BleDiagnostics(
+    val error: CommandError? = null,
+    val lastRecovery: String? = null,
+    val recoveries: Int = 0,
+    val lastPacketAtMillis: Long? = null,
 )
 
 sealed interface CommandResult {
@@ -140,6 +152,10 @@ data class ProximityCalibration(
         require(lockDistanceMeters in 2.0..10.0)
         require(unlockDistanceMeters < lockDistanceMeters)
     }
+    fun approximateDistance(rssi: Double): Double = kotlin.math.exp(
+        (rssi - nearRssi) / (farRssi - nearRssi) * kotlin.math.ln(5.0),
+    ).coerceIn(0.1, 50.0)
+
     val unlockThreshold get() = rssiAt(unlockDistanceMeters)
     val lockThreshold get() = rssiAt(lockDistanceMeters)
 
@@ -153,7 +169,7 @@ data class ProximityCalibration(
         const val DEFAULT_LOCK_DISTANCE_METERS = 4.0
     }
 }
-data class ProximityState(val zone: ProximityZone = ProximityZone.UNKNOWN, val smoothedRssi: Double? = null, val armed: Boolean = true)
+data class ProximityState(val zone: ProximityZone = ProximityZone.UNKNOWN, val smoothedRssi: Double? = null, val armed: Boolean = true, val needsConfirmation: Boolean = false)
 
 interface ProximityKeyManager {
     val state: StateFlow<ProximityState>

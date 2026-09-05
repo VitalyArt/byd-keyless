@@ -24,7 +24,12 @@ class QuickControlWidget : AppWidgetProvider() {
     }
 
     companion object {
+        private var lastRenderKey: List<Any?>? = null
         fun updateAll(context: Context) {
+            val graph = (context.applicationContext as KeylessApplication).graph
+            val key = listOf(graph.ble.connectionState.value, graph.quickCommands.state.value, graph.store.language)
+            if (key == lastRenderKey) return
+            lastRenderKey = key
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, QuickControlWidget::class.java)
             manager.getAppWidgetIds(component).forEach { manager.updateAppWidget(it, views(context)) }

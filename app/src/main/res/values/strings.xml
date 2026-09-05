@@ -170,4 +170,17 @@
     <string name="shortcut_trunk_long">Open BYD vehicle trunk</string>
     <string name="quick_controls_warning">Quick controls run immediately without authentication and can be used from the lock screen.</string>
     <string name="region_uz">Uzbekistan</string><string name="region_kz">Kazakhstan</string><string name="region_no">Norway</string><string name="region_nl">Netherlands</string><string name="region_de">Germany</string><string name="region_gb">United Kingdom</string><string name="region_fr">France</string><string name="region_it">Italy</string><string name="region_es">Spain</string><string name="region_sg">Singapore</string><string name="region_au">Australia</string><string name="region_br">Brazil</string><string name="region_jp">Japan</string><string name="region_om">Oman</string><string name="region_mx">Mexico</string><string name="region_id">Indonesia</string><string name="region_tr">Türkiye</string><string name="region_kr">South Korea</string><string name="region_in">India</string><string name="region_vnm">Vietnam</string><string name="region_sa">Saudi Arabia</string>
+    <string name="quick_confirm_title">Confirm vehicle command</string>
+    <string name="quick_confirm_message">Send “%1$s” to your vehicle?</string>
+    <string name="error_background_start">Background key could not start. Check Bluetooth permissions and open the app again.</string>
+    <string name="calibration_measuring">Measuring signal… Keep the phone still for 8 seconds.</string>
+    <string name="calibration_unstable">Not enough stable signal samples. Stay connected, keep the phone still and try again.</string>
+    <string name="calibration_sample_ready">Signal sample captured.</string>
+    <string name="diagnostics_title">Connection diagnostics</string>
+    <string name="diagnostics_service_on">Background service is running</string>
+    <string name="diagnostics_service_off">Background service is stopped</string>
+    <string name="diagnostics_signal_age">Last signal: %1$s s ago</string>
+    <string name="diagnostics_packet_age">Last vehicle response: %1$s s ago</string>
+    <string name="diagnostics_recoveries">Connection recoveries: %1$d</string>
+    <string name="automation_needs_confirmation">Automatic command was not confirmed. Check the vehicle and use manual lock or unlock to resume automation.</string>
 </resources>
