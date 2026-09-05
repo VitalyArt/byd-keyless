@@ -14,9 +14,10 @@ object PassiveEntryPolicy {
         profile: VehicleProfile?,
         now: Long,
         lastTriggerAt: Long,
+        keyValid: Boolean = profile?.hasValidKey(now) == true,
     ): Boolean = mode == KeylessMode.PASSIVE_ENTRY &&
         state == BleConnectionState.READY &&
-        profile?.hasValidKey(now) == true &&
-        VehicleCommand.UNLOCK.functionCode in profile.capabilities &&
+        keyValid &&
+        VehicleCommand.UNLOCK.functionCode in profile?.capabilities.orEmpty() &&
         (lastTriggerAt == Long.MIN_VALUE || now - lastTriggerAt >= DEBOUNCE_MS)
 }

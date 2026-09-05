@@ -1,6 +1,8 @@
 package com.vitalyart.bydkeyless.ui
 
 import android.graphics.Bitmap
+import android.os.SystemClock
+import kotlinx.coroutines.delay
 import androidx.annotation.StringRes
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -499,6 +501,7 @@ private fun SettingsScreen(
         }
         item {
             SectionCard(R.string.automation, Icons.Rounded.AutoAwesome) {
+                if (state.proximity.needsConfirmation) Text(stringResource(R.string.automation_needs_confirmation), color = Critical)
                 SettingSwitch(R.string.auto_unlock, state.autoUnlock, state.mode == KeylessMode.AUTO_UNLOCK_LOCK && state.calibrated && state.manualUnlockVerified) { vm.configureKeyless(autoUnlock = it) }
                 SettingSwitch(R.string.auto_lock, state.autoLock, state.mode == KeylessMode.AUTO_UNLOCK_LOCK && state.calibrated && state.manualLockVerified) { vm.configureKeyless(autoLock = it) }
                 if (!state.calibrated || !state.manualUnlockVerified || !state.manualLockVerified) Text(stringResource(R.string.automation_prerequisites), color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
@@ -514,6 +517,7 @@ private fun SettingsScreen(
             }
         }
         item { LanguageSetting(state.language, vm::setLanguage) }
+        item { BackgroundDiagnostics(state) }
         item {
             SectionCard(R.string.background_title, Icons.Rounded.BatterySaver) {
                 Text(stringResource(R.string.background_description), color = TextSecondary, fontSize = 12.sp, lineHeight = 18.sp)
@@ -723,3 +727,20 @@ private fun qrBitmap(payload: String, size: Int): Bitmap {
 }
 
 private fun maskVin(vin: String?): String? = vin?.takeIf { it.isNotBlank() }?.let { "•••••••••••${it.takeLast(6)}" }
+
+@Composable
+private fun BackgroundDiagnostics(state: MainUiState) {
+    var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    LaunchedEffect(Unit) { while (true) { delay(1_000); now = SystemClock.elapsedRealtime() } }
+    SectionCard(R.string.diagnostics_title, Icons.Rounded.Bluetooth) {
+        Text(stringResource(if (state.serviceRunning) R.string.diagnostics_service_on else R.string.diagnostics_service_off))
+        Text(stringResource(connectionStatus(state.bleState)), color = TextSecondary)
+        state.bleError?.let { Text(stringResource(it.messageResource()), color = Critical) }
+        val rssiAge = state.telemetry.rssiAtMillis?.let { ((now - it).coerceAtLeast(0) / 1_000).toString() } ?: "—"
+        val packetAge = state.diagnostics.lastPacketAtMillis?.let { ((now - it).coerceAtLeast(0) / 1_000).toString() } ?: "—"
+        Text(stringResource(R.string.diagnostics_signal_age, rssiAge), color = TextSecondary)
+        Text(stringResource(R.string.diagnostics_packet_age, packetAge), color = TextSecondary)
+        Text(stringResource(R.string.diagnostics_recoveries, state.diagnostics.recoveries), color = TextSecondary)
+        state.diagnostics.lastRecovery?.let { Text(it, color = TextSecondary, fontSize = 12.sp) }
+    }
+}

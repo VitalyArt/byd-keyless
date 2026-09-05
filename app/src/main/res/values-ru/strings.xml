@@ -30,4 +30,17 @@
     <string name="error_timeout">BYD не ответил вовремя. Проверьте соединение и повторите попытку.</string>
     <string name="error_tls">Не удалось установить защищённое соединение с BYD. Проверьте дату на устройстве и сеть.</string>
     <string name="error_connection">Соединение с BYD прервано. Проверьте сеть и повторите попытку.</string>
+    <string name="quick_confirm_title">Подтвердите команду</string>
+    <string name="quick_confirm_message">Отправить автомобилю команду «%1$s»?</string>
+    <string name="error_background_start">Не удалось запустить фоновый ключ. Проверьте разрешения Bluetooth и снова откройте приложение.</string>
+    <string name="calibration_measuring">Измеряем сигнал… Не перемещайте телефон 8 секунд.</string>
+    <string name="calibration_unstable">Недостаточно стабильных замеров. Проверьте соединение, держите телефон неподвижно и повторите.</string>
+    <string name="calibration_sample_ready">Замер сигнала сохранён.</string>
+    <string name="diagnostics_title">Диагностика соединения</string>
+    <string name="diagnostics_service_on">Фоновый сервис работает</string>
+    <string name="diagnostics_service_off">Фоновый сервис остановлен</string>
+    <string name="diagnostics_signal_age">Последний сигнал: %1$s с назад</string>
+    <string name="diagnostics_packet_age">Последний ответ автомобиля: %1$s с назад</string>
+    <string name="diagnostics_recoveries">Восстановлений соединения: %1$d</string>
+    <string name="automation_needs_confirmation">Автокоманда не подтверждена. Проверьте автомобиль и выполните ручное закрытие или открытие, чтобы возобновить автоматику.</string>
 </resources>

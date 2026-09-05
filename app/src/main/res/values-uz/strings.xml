@@ -30,4 +30,17 @@
     <string name="error_timeout">BYD o‘z vaqtida javob bermadi. Ulanishni tekshirib, qayta urinib ko‘ring.</string>
     <string name="error_tls">BYD bilan xavfsiz ulanish o‘rnatilmadi. Qurilma sanasi va tarmoqni tekshiring.</string>
     <string name="error_connection">BYD bilan ulanish uzildi. Tarmoqni tekshirib, qayta urinib ko‘ring.</string>
+    <string name="quick_confirm_title">Buyruqni tasdiqlang</string>
+    <string name="quick_confirm_message">Avtomobilga «%1$s» buyrug‘i yuborilsinmi?</string>
+    <string name="error_background_start">Fon kaliti ishga tushmadi. Bluetooth ruxsatlarini tekshiring va ilovani qayta oching.</string>
+    <string name="calibration_measuring">Signal o‘lchanmoqda… Telefonni 8 soniya qimirlatmang.</string>
+    <string name="calibration_unstable">Barqaror o‘lchovlar yetarli emas. Ulanishni tekshiring, telefonni qimirlatmay qayta urinib ko‘ring.</string>
+    <string name="calibration_sample_ready">Signal o‘lchovi saqlandi.</string>
+    <string name="diagnostics_title">Ulanish diagnostikasi</string>
+    <string name="diagnostics_service_on">Fon xizmati ishlamoqda</string>
+    <string name="diagnostics_service_off">Fon xizmati to‘xtagan</string>
+    <string name="diagnostics_signal_age">Oxirgi signal: %1$s soniya oldin</string>
+    <string name="diagnostics_packet_age">Avtomobilning oxirgi javobi: %1$s soniya oldin</string>
+    <string name="diagnostics_recoveries">Ulanish tiklanishlari: %1$d</string>
+    <string name="automation_needs_confirmation">Avtomatik buyruq tasdiqlanmadi. Avtomobilni tekshiring va avtomatik rejimni tiklash uchun qo‘lda qulflang yoki oching.</string>
 </resources>

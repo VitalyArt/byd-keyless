@@ -4,6 +4,7 @@ import com.vitalyart.bydkeyless.model.CommandResult
 import com.vitalyart.bydkeyless.model.VehicleCommand
 import com.vitalyart.bydkeyless.model.WatchToken
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.launch
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -150,6 +151,30 @@ class WatchApiRepositoryTest {
 
         assertTrue(repository.executeCloudCommand(token, VehicleCommand.CLOSE_TRUNK) is CommandResult.Success)
         assertEquals(2, resultPoll)
+    }
+
+    @Test fun doesNotResendVehicleCommandWhenResponseIsLost() = runTest {
+        server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AFTER_REQUEST))
+        server.start()
+        val repository = BydWatchAuthRepository(WatchConfig(watchImei = "test", baseUrlOverride = server.url("/").toString()))
+        val token = WatchToken(0, "user-id", "test", "encryption-token", "sign-token", 0, "ru", "test-vin", "1", null)
+        assertTrue(repository.executeCloudCommand(token, VehicleCommand.CLOSE_TRUNK) is CommandResult.Failure)
+        assertEquals(1, server.requestCount)
+    }
+
+    @Test fun cancellationReachesTheUnderlyingHttpCall() = kotlinx.coroutines.runBlocking {
+        server.enqueue(MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.NO_RESPONSE))
+        server.start()
+        val client = okhttp3.OkHttpClient.Builder().build()
+        val repository = BydWatchAuthRepository(WatchConfig(watchImei = "test", baseUrlOverride = server.url("/").toString()), client)
+        val job = launch(kotlinx.coroutines.Dispatchers.IO) {
+            repository.synchronizeServerTime()
+        }
+        assertTrue(server.takeRequest(5, java.util.concurrent.TimeUnit.SECONDS) != null)
+        job.cancel()
+        kotlinx.coroutines.withTimeout(2_000) { job.join() }
+        assertTrue(job.isCancelled)
+        assertTrue(client.dispatcher.runningCalls().all { it.isCanceled() })
     }
 
     private fun success(data: JSONObject, key: String): MockResponse {

@@ -19,6 +19,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class MainUiState(
     val loading: Boolean = false,
@@ -26,6 +28,9 @@ data class MainUiState(
     val qrStatus: WatchQrStatus = WatchQrStatus.UNKNOWN,
     val token: WatchToken? = null,
     val profile: VehicleProfile? = null,
+    val serviceRunning: Boolean = false,
+    val diagnostics: BleDiagnostics = BleDiagnostics(),
+    val bleError: CommandError? = null,
     val bleState: BleConnectionState = BleConnectionState.IDLE,
     val telemetry: VehicleTelemetry = VehicleTelemetry(),
     val proximity: ProximityState = ProximityState(),
@@ -54,9 +59,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val ui: StateFlow<MainUiState> = _ui.asStateFlow()
     private var polling: Job? = null
     private var messageJob: Job? = null
+    private var startJob: Job? = null
+    private var calibrationJob: Job? = null
 
     init {
-        viewModelScope.launch { graph.ble.connectionState.collect { _ui.update { s -> s.copy(bleState = it) } } }
+        viewModelScope.launch { KeylessService.running.collect { value -> _ui.update { it.copy(serviceRunning = value) } } }
+        viewModelScope.launch { graph.ble.diagnostics.collect { value -> _ui.update { it.copy(diagnostics = value, bleError = value.error) } } }
+        viewModelScope.launch { graph.ble.connectionState.collect { _ui.update { s -> s.copy(bleState = it, bleError = graph.ble.lastError) } } }
         viewModelScope.launch { graph.ble.telemetry.collect { _ui.update { s -> s.copy(telemetry = it) } } }
         viewModelScope.launch { graph.proximity.state.collect { _ui.update { s -> s.copy(proximity = it) } } }
         viewModelScope.launch { graph.quickCommands.state.collect { quick ->
@@ -145,28 +154,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startKey() {
-        viewModelScope.launch {
+        if (startJob?.isActive == true) return
+        startJob = viewModelScope.launch {
             val current = _ui.value.profile ?: return@launch
             val token = _ui.value.token ?: return@launch
-            // Capabilities and key validity can change server-side. Refresh whenever
-            // the user starts the key, but retain a still-valid offline key if BYD is
-            // temporarily unreachable.
-            val profile = runCatching { graph.auth.loadVehicleProfile(token) }.fold(
-                onSuccess = { refreshed ->
+            // A usable local credential does not need to wait for the network.
+            if (current.hasValidKey()) {
+                graph.ble.connect(current)
+                startBackgroundKey()
+            }
+            try {
+                val refreshed = withTimeoutOrNull(if (current.hasValidKey()) 8_000L else 30_000L) {
+                    graph.auth.loadVehicleProfile(token)
+                }
+                if (refreshed != null) {
                     graph.store.saveSession(token, refreshed)
                     _ui.update { it.copy(profile = refreshed, error = null) }
-                    refreshed
-                },
-                onFailure = { failure ->
-                    if (!current.hasValidKey()) {
-                        _ui.update { it.copy(error = UiMessage(networkError(failure))) }
-                        return@launch
-                    }
-                    current
-                },
-            )
-            graph.ble.connect(profile)
-            if (graph.store.keylessMode != KeylessMode.OFF) runCatching { KeylessService.start(getApplication()) }
+                    graph.ble.connect(refreshed)
+                    startBackgroundKey()
+                } else if (!current.hasValidKey()) showError(UiMessage(R.string.error_timeout))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                if (!current.hasValidKey()) showError(UiMessage(networkError(failure)))
+            }
+        }
+    }
+
+    private fun startBackgroundKey() {
+        if (graph.store.keylessMode != KeylessMode.OFF) {
+            runCatching { KeylessService.start(getApplication()) }
+                .onFailure { showError(UiMessage(R.string.error_background_start)) }
         }
     }
 
@@ -189,6 +207,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     graph.ble.execute(command, graph.store.experimentalEnabled)
                 }
             }.getOrElse {
+                if (it is CancellationException) throw it
                 CommandResult.Failure(if (command.transport == CommandTransport.CLOUD) CommandError.CLOUD_REJECTED else CommandError.GATT_WRITE_FAILED)
             }
             if (result is CommandResult.Success) {
@@ -224,8 +243,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleMessageClear()
     }
 
-    fun captureNear() { _ui.value.telemetry.rssi?.let { _ui.update { s -> s.copy(nearSample = it) } } }
-    fun captureFar() { _ui.value.telemetry.rssi?.let { _ui.update { s -> s.copy(farSample = it) } } }
+    fun captureNear() = captureCalibration(near = true)
+    fun captureFar() = captureCalibration(near = false)
+    private fun captureCalibration(near: Boolean) {
+        if (calibrationJob?.isActive == true) return
+        calibrationJob = viewModelScope.launch {
+            _ui.update { it.copy(commandResult = UiMessage(R.string.calibration_measuring), error = null) }
+            val samples = mutableListOf<Int>()
+            val initial = graph.ble.telemetry.value
+            graph.ble.requestCalibrationSampling()
+            val completed = withTimeoutOrNull(12_000L) {
+                graph.ble.telemetry.filter {
+                    it.rssi != null && it.connectionGeneration == initial.connectionGeneration && it.rssiSequence > initial.rssiSequence &&
+                        it.rssiAtMillis?.let { at -> android.os.SystemClock.elapsedRealtime() - at in 0..4_000L } == true &&
+                        graph.ble.connectionState.value == BleConnectionState.READY
+                }
+                    .distinctUntilChangedBy { it.connectionGeneration to it.rssiSequence }.take(8).collect { samples += requireNotNull(it.rssi) }
+                true
+            } == true
+            if (!completed || samples.maxOrNull()!! - samples.minOrNull()!! > 12) {
+                showError(UiMessage(R.string.calibration_unstable))
+                return@launch
+            }
+            val median = samples.sorted().let { (it[3] + it[4]) / 2 }
+            _ui.update { if (near) it.copy(nearSample = median, commandResult = UiMessage(R.string.calibration_sample_ready))
+                else it.copy(farSample = median, commandResult = UiMessage(R.string.calibration_sample_ready)) }
+            scheduleMessageClear()
+        }
+    }
     fun saveCalibration() {
         val near = _ui.value.nearSample ?: return
         val far = _ui.value.farSample ?: return
@@ -246,8 +291,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         graph.store.keylessMode = mode; graph.store.autoUnlock = autoUnlock; graph.store.autoLock = autoLock
         graph.proximity.configure(mode, graph.store.calibration(), autoUnlock, autoLock)
         _ui.update { it.copy(mode = mode, autoUnlock = autoUnlock, autoLock = autoLock) }
-        if (mode == KeylessMode.OFF) KeylessService.stop(getApplication())
-        else runCatching { KeylessService.start(getApplication()) }
+        if (mode == KeylessMode.OFF) { startJob?.cancel(); KeylessService.stop(getApplication()) }
+        else startBackgroundKey()
     }
 
     fun setProximityDistances(unlockMeters: Double = _ui.value.unlockDistanceMeters, lockMeters: Double = _ui.value.lockDistanceMeters) {
@@ -263,6 +308,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setExperimental(enabled: Boolean) { graph.store.experimentalEnabled = enabled; _ui.update { it.copy(experimental = enabled) } }
 
     fun logout() {
+        startJob?.cancel()
+        calibrationJob?.cancel()
         polling?.cancel()
         viewModelScope.launch {
             val permissionState = _ui.value.permissionState

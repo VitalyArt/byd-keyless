@@ -1,7 +1,6 @@
 package com.vitalyart.bydkeyless.service
 
 import android.app.*
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -25,23 +24,34 @@ import com.vitalyart.bydkeyless.quick.QuickCommandPhase
 import com.vitalyart.bydkeyless.ui.messageResource
 import com.vitalyart.bydkeyless.widget.QuickControlWidget
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
 
 class KeylessService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val graph get() = (application as KeylessApplication).graph
     private var monitoring = false
+    private var monitoredProfile: VehicleProfile? = null
+    private var foregroundReady = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastNotificationText: String? = null
 
-    @SuppressLint("WakelockTimeout")
     override fun onCreate() {
         super.onCreate()
+        createChannel()
+        try {
+            promoteForeground()
+            foregroundReady = true
+            _running.value = true
+        } catch (error: SecurityException) {
+            stopSelf()
+            return
+        }
         wakeLock = getSystemService(PowerManager::class.java)
             .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:keyless-proximity")
-            .apply { setReferenceCounted(false); acquire() }
-        createChannel()
-        promoteForeground()
+            .apply { setReferenceCounted(false) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -49,6 +59,7 @@ class KeylessService : Service() {
             stopKey()
             return START_NOT_STICKY
         }
+        if (!foregroundReady) { stopSelf(); return START_NOT_STICKY }
         val quickCommand = QuickCommandContract.commandForAction(intent?.action)
         val session = graph.store.loadSession()
         if (quickCommand == null && (session == null || !session.second.hasValidKey() || graph.store.keylessMode == KeylessMode.OFF)) {
@@ -61,15 +72,31 @@ class KeylessService : Service() {
 
     private fun beginMonitoring(profile: VehicleProfile) {
         monitoring = true
+        monitoredProfile = profile
         graph.proximity.configure(graph.store.keylessMode, graph.store.calibration(), graph.store.autoUnlock, graph.store.autoLock)
         scope.launch { graph.ble.connect(profile) }
-        scope.launch { graph.ble.telemetry.collectLatest { telemetry ->
-            if (!profile.hasValidKey()) stopKey()
+        scope.launch { graph.ble.telemetry.collect { telemetry ->
+            if (monitoredProfile?.hasValidKey() != true) stopKey()
             else if (graph.store.keylessMode != KeylessMode.OFF) graph.proximity.onTelemetry(telemetry)
             refreshSurfaces()
         } }
         scope.launch { graph.ble.connectionState.collectLatest { refreshSurfaces() } }
         scope.launch { graph.quickCommands.state.collectLatest { refreshSurfaces() } }
+        scope.launch { graph.proximity.state.collectLatest { refreshSurfaces() } }
+        scope.launch { graph.ble.diagnostics.collectLatest { refreshSurfaces() } }
+        scope.launch {
+            while (isActive) {
+                delay(5_000L)
+                val current = withContext(Dispatchers.IO) { graph.store.loadSession()?.second }
+                if (current?.hasValidKey() != true) { stopKey(); break }
+                if (graph.store.keylessMode == KeylessMode.OFF && graph.quickCommands.state.value.phase == QuickCommandPhase.IDLE) { stopKey(); break }
+                if (current != monitoredProfile) {
+                    monitoredProfile = current
+                    graph.proximity.configure(graph.store.keylessMode, graph.store.calibration(), graph.store.autoUnlock, graph.store.autoLock)
+                    graph.ble.connect(current)
+                }
+            }
+        }
     }
 
     private fun executeQuickCommand(command: VehicleCommand) {
@@ -79,7 +106,7 @@ class KeylessService : Service() {
             if (result == CommandResult.Success && command == VehicleCommand.LOCK) graph.store.manualLockVerified = true
             refreshSurfaces()
             val busy = (result as? CommandResult.Rejected)?.error == CommandError.COMMAND_BUSY
-            if (!busy) {
+            if (!busy || graph.quickCommands.state.value.phase == QuickCommandPhase.ERROR) {
                 val terminal = graph.quickCommands.state.value
                 delay(5_000L)
                 val cleared = graph.quickCommands.clearTerminalState(terminal)
@@ -96,6 +123,7 @@ class KeylessService : Service() {
     }
 
     override fun onDestroy() {
+        _running.value = false
         scope.cancel()
         runBlocking { graph.ble.disconnect() }
         wakeLock?.takeIf { it.isHeld }?.release()
@@ -107,12 +135,29 @@ class KeylessService : Service() {
     private fun stopKey() { scope.launch { graph.ble.disconnect() }; stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
 
     private fun refreshSurfaces() {
+        updateWakeLock()
         val text = notificationText()
         if (text != lastNotificationText) {
             lastNotificationText = text
             getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
         }
         QuickControlWidget.updateAll(this)
+    }
+
+    private var previousConnectionState: BleConnectionState? = null
+    private var previousQuickPhase: QuickCommandPhase? = null
+    private fun updateWakeLock() {
+        val state = graph.ble.connectionState.value
+        val quick = graph.quickCommands.state.value.phase
+        if (state != previousConnectionState || quick != previousQuickPhase) {
+            if (state in setOf(BleConnectionState.CONNECTING, BleConnectionState.DISCOVERING, BleConnectionState.AUTHENTICATING) || quick == QuickCommandPhase.EXECUTING) {
+                wakeLock?.acquire(35_000L)
+            } else if (state != BleConnectionState.READY) {
+                wakeLock?.takeIf { it.isHeld }?.release()
+            }
+            previousConnectionState = state
+            previousQuickPhase = quick
+        }
     }
 
     private fun notificationText(): String {
@@ -122,7 +167,7 @@ class KeylessService : Service() {
             QuickCommandPhase.EXECUTING -> appString(R.string.message_executing)
             QuickCommandPhase.SUCCESS -> appString(R.string.message_command_success)
             QuickCommandPhase.ERROR -> quick.error?.let { appString(it.messageResource()) } ?: appString(R.string.status_error)
-            QuickCommandPhase.IDLE -> if (graph.ble.connectionState.value == BleConnectionState.READY) appString(R.string.key_service_connected) else appString(R.string.key_service_scanning)
+            QuickCommandPhase.IDLE -> if (graph.proximity.state.value.needsConfirmation && graph.store.keylessMode == KeylessMode.AUTO_UNLOCK_LOCK) appString(R.string.automation_needs_confirmation) else graph.ble.lastError?.let { appString(it.messageResource()) } ?: if (graph.ble.connectionState.value == BleConnectionState.READY) appString(R.string.key_service_connected) else appString(R.string.key_service_scanning)
         }
     }
 
@@ -160,6 +205,8 @@ class KeylessService : Service() {
     private fun appString(@androidx.annotation.StringRes id: Int) = localizedString(graph.store.language, id)
 
     companion object {
+        private val _running = MutableStateFlow(false)
+        val running = _running.asStateFlow()
         const val CHANNEL_ID = "byd_keyless_active"
         const val NOTIFICATION_ID = 7401
         const val ACTION_STOP = "com.vitalyart.bydkeyless.STOP"

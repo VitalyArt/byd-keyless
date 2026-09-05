@@ -5,7 +5,10 @@ import com.vitalyart.bydkeyless.model.*
 import java.io.IOException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resumeWithException
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -246,7 +249,7 @@ class BydWatchAuthRepository(
                 }
             }
             CommandResult.Failure(CommandError.VEHICLE_TIMEOUT)
-        }.getOrElse { CommandResult.Failure(CommandError.CLOUD_REJECTED) }
+        }.getOrElse { if (it is CancellationException) throw it; CommandResult.Failure(CommandError.CLOUD_REJECTED) }
     }
 
     private enum class Operation { TIME, CREATE, CHECK, TOKEN }
@@ -296,12 +299,13 @@ class BydWatchAuthRepository(
 
     private suspend fun send(path: String, body: JSONObject, key: String): JSONObject {
         var lastFailure: WatchNetworkException? = null
-        repeat(NETWORK_ATTEMPTS) { attempt ->
+        val attempts = if (path == "/watch/control/vehicleControl") 1 else NETWORK_ATTEMPTS
+        repeat(attempts) { attempt ->
             try {
                 return sendOnce(path, body, key)
             } catch (failure: WatchNetworkException) {
                 lastFailure = failure
-                if (attempt + 1 < NETWORK_ATTEMPTS) {
+                if (attempt + 1 < attempts) {
                     safeLog { Log.w(WATCH_LOG_TAG, "${failure.failure} for $path; retry ${attempt + 2}/$NETWORK_ATTEMPTS") }
                     delay(750L * (attempt + 1))
                 }
@@ -315,7 +319,8 @@ class BydWatchAuthRepository(
             .header("Accept-Encoding", "identity").header("User-Agent", "okhttp/4.12.0")
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType())).build()
         try {
-            client.newCall(request).execute().use { response ->
+            val transport = if (path == "/watch/control/vehicleControl") client.newBuilder().retryOnConnectionFailure(false).build() else client
+            transport.newCall(request).awaitResponse().use { response ->
                 safeLog { Log.d(WATCH_LOG_TAG, "${request.method} ${request.url.host}$path -> HTTP ${response.code}") }
                 check(response.isSuccessful) { "BYD returned HTTP ${response.code}" }
                 val raw = response.body?.string().orEmpty()
@@ -368,5 +373,19 @@ private fun defaultWatchHttpClient(config: WatchConfig) = OkHttpClient.Builder()
     .dns(if (config.baseUrlOverride == null) ResilientWatchDns() else Dns.SYSTEM)
     .connectTimeout(15, TimeUnit.SECONDS)
     .readTimeout(20, TimeUnit.SECONDS)
+    .callTimeout(30, TimeUnit.SECONDS)
     .retryOnConnectionFailure(true)
     .build()
+
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+private suspend fun okhttp3.Call.awaitResponse(): okhttp3.Response = suspendCancellableCoroutine { continuation ->
+    continuation.invokeOnCancellation { cancel() }
+    enqueue(object : okhttp3.Callback {
+        override fun onFailure(call: okhttp3.Call, e: java.io.IOException) {
+            if (!continuation.isCancelled) continuation.resumeWithException(e)
+        }
+        override fun onResponse(call: okhttp3.Call, response: okhttp3.Response) {
+            continuation.resume(response) { response.close() }
+        }
+    })
+}
