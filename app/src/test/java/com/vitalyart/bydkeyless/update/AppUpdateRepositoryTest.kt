@@ -74,9 +74,33 @@ class AppUpdateRepositoryTest {
         }
     }
 
+    @Test fun repositoryExposesGithubHttpErrorDetails() = runTest {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(
+                MockResponse()
+                    .setResponseCode(403)
+                    .setHeader("X-RateLimit-Reset", "1789754662")
+                    .setBody("{\"message\":\"API rate limit exceeded\"}"),
+            )
+            val repository = GitHubReleaseRepository(releasesUrl = server.url("releases").toString())
+            val failure = runCatching {
+                repository.fetchLatest(requireNotNull(SemanticVersion.parse("1.0.0")), false)
+            }.exceptionOrNull()
+
+            assertTrue(failure?.message?.contains("HTTP 403") == true)
+            assertTrue(failure?.message?.contains("API rate limit exceeded") == true)
+            assertTrue(failure?.message?.contains("2026-09-18T18:04:22Z") == true)
+        } finally {
+            server.shutdown()
+        }
+    }
+
     @Test fun checksumParserOnlyAcceptsExactAsset() {
         val expected = "b".repeat(64)
         assertEquals(expected, GitHubReleaseRepository.parseChecksum("$expected *BYDKeyless-v1.0.1-arm64-v8a.apk", "BYDKeyless-v1.0.1-arm64-v8a.apk"))
+        assertEquals(expected, GitHubReleaseRepository.parseChecksum("$expected  ./BYDKeyless-v1.0.1-arm64-v8a.apk", "BYDKeyless-v1.0.1-arm64-v8a.apk"))
         assertNull(GitHubReleaseRepository.parseChecksum("$expected other.apk", "BYDKeyless-v1.0.1-arm64-v8a.apk"))
     }
 

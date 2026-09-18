@@ -203,6 +203,7 @@
     <string name="update_ready_message">BYD Keyless %1$s was verified and is ready for the Android installer.</string>
     <string name="update_error_title">Update failed</string>
     <string name="update_error_network">Could not check GitHub Releases. Check your connection and try again.</string>
+    <string name="update_error_details">Details: %1$s</string>
     <string name="update_error_release">The GitHub release does not contain a valid update package.</string>
     <string name="update_error_download">The update could not be downloaded. Try again.</string>
     <string name="update_error_checksum">The downloaded file failed its integrity check and was deleted.</string>

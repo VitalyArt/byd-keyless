@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.util.Log
 import com.vitalyart.bydkeyless.BuildConfig
 import com.vitalyart.bydkeyless.storage.SecureSessionStore
 import kotlinx.coroutines.CancellationException
@@ -29,6 +30,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -155,7 +157,7 @@ class GitHubReleaseRepository(
         val response = client.newCall(request).await()
         response.use {
             if (it.code == 304) return ReleaseFetchResult.NotModified
-            check(it.isSuccessful) { "GitHub returned HTTP ${it.code}" }
+            if (!it.isSuccessful) throw it.asHttpException("GitHub Releases")
             val raw = it.body?.string().orEmpty()
             val selected = try {
                 selectRelease(JSONArray(raw), currentVersion, includePrereleases, acceptedDownloadPrefix)
@@ -174,7 +176,7 @@ class GitHubReleaseRepository(
         val request = Request.Builder().url(release.checksumUrl)
             .header("User-Agent", "BYD-Keyless/${BuildConfig.VERSION_NAME}").build()
         return client.newCall(request).await().use { response ->
-            check(response.isSuccessful) { "Checksum returned HTTP ${response.code}" }
+            if (!response.isSuccessful) throw response.asHttpException("Release checksum")
             parseChecksum(response.body?.string().orEmpty(), release.apkName)
                 ?: error("Release checksum is missing")
         }
@@ -213,7 +215,8 @@ class GitHubReleaseRepository(
 
         fun parseChecksum(contents: String, apkName: String): String? = contents.lineSequence().mapNotNull { line ->
             val match = Regex("^([0-9a-fA-F]{64})\\s+\\*?(.+)$").matchEntire(line.trim()) ?: return@mapNotNull null
-            if (match.groupValues[2] == apkName) match.groupValues[1].lowercase(Locale.US) else null
+            val checksumFileName = match.groupValues[2].removePrefix("./")
+            if (checksumFileName == apkName) match.groupValues[1].lowercase(Locale.US) else null
         }.firstOrNull()
 
         const val RELEASE_DOWNLOAD_PREFIX = "https://github.com/VitalyArt/byd-keyless/releases/download/"
@@ -233,7 +236,12 @@ sealed interface UpdateState {
     data class Downloading(val release: AppRelease, val progress: Int?) : UpdateState
     data class ReadyToInstall(val release: AppRelease, val file: File, val prompt: Boolean = true) : UpdateState
     data class Installing(val release: AppRelease) : UpdateState
-    data class Error(val error: UpdateError, val release: AppRelease? = null, val showDialog: Boolean = false) : UpdateState
+    data class Error(
+        val error: UpdateError,
+        val release: AppRelease? = null,
+        val showDialog: Boolean = false,
+        val details: String? = null,
+    ) : UpdateState
 }
 
 class AppUpdateManager(
@@ -281,10 +289,18 @@ class AppUpdateManager(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (_: InvalidReleaseException) {
-                _state.value = if (manual) UpdateState.Error(UpdateError.RELEASE_INVALID) else UpdateState.Idle
-            } catch (_: Exception) {
-                _state.value = if (manual) UpdateState.Error(UpdateError.NETWORK) else UpdateState.Idle
+            } catch (failure: InvalidReleaseException) {
+                Log.e(TAG, "GitHub release data is invalid", failure)
+                _state.value = if (manual) UpdateState.Error(
+                    UpdateError.RELEASE_INVALID,
+                    details = failure.technicalDetails(),
+                ) else UpdateState.Idle
+            } catch (failure: Exception) {
+                Log.e(TAG, "Could not check GitHub Releases", failure)
+                _state.value = if (manual) UpdateState.Error(
+                    UpdateError.NETWORK,
+                    details = failure.technicalDetails(),
+                ) else UpdateState.Idle
             }
         }
     }
@@ -439,6 +455,7 @@ class AppUpdateManager(
     private data class DownloadSnapshot(val status: Int, val progress: Int?)
 
     companion object {
+        private const val TAG = "AppUpdateManager"
         const val APK_MIME = "application/vnd.android.package-archive"
         const val CHECK_INTERVAL_MILLIS = 24L * 60L * 60L * 1_000L
 
@@ -446,6 +463,30 @@ class AppUpdateManager(
             manual || lastCheckAt <= 0L || now < lastCheckAt || now - lastCheckAt >= CHECK_INTERVAL_MILLIS
     }
 }
+
+private fun Response.asHttpException(source: String): IOException {
+    val apiMessage = runCatching {
+        JSONObject(peekBody(4_096L).string()).optString("message").takeIf(String::isNotBlank)
+    }.getOrNull()
+    val resetAt = header("X-RateLimit-Reset")?.toLongOrNull()?.let { epochSeconds ->
+        runCatching { Instant.ofEpochSecond(epochSeconds).toString() }.getOrNull()
+    }
+    val details = buildList {
+        add("$source returned HTTP $code")
+        apiMessage?.let(::add)
+        resetAt?.let { add("rate limit resets at $it") }
+    }.joinToString(": ")
+    return IOException(details)
+}
+
+private fun Throwable.technicalDetails(): String = generateSequence(this) { it.cause }
+    .map { failure ->
+        val type = failure::class.java.simpleName.ifBlank { failure::class.java.name.substringAfterLast('.') }
+        failure.message?.takeIf(String::isNotBlank)?.let { "$type: $it" } ?: type
+    }
+    .distinct()
+    .joinToString(" → ")
+    .take(1_000)
 
 private fun sha256(file: File): String = file.inputStream().use { input ->
     val digest = MessageDigest.getInstance("SHA-256")

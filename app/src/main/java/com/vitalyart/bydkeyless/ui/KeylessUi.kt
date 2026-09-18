@@ -582,7 +582,12 @@ private fun UpdateSettingsCard(state: MainUiState, vm: MainViewModel, installUpd
                 Button(installUpdate, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.update_install)) }
             }
             is UpdateState.Installing -> Text(stringResource(R.string.update_installing), color = TextSecondary)
-            is UpdateState.Error -> Text(stringResource(updateErrorText(update.error)), color = Critical, fontSize = 13.sp)
+            is UpdateState.Error -> {
+                Text(stringResource(updateErrorText(update.error)), color = Critical, fontSize = 13.sp)
+                update.details?.let { details ->
+                    Text(stringResource(R.string.update_error_details, details), color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
+                }
+            }
             UpdateState.Idle -> Text(stringResource(R.string.update_no_update), color = TextSecondary, fontSize = 13.sp)
         }
         OutlinedButton(
@@ -616,7 +621,14 @@ private fun UpdatePrompt(state: UpdateState, vm: MainViewModel, installUpdate: (
             onDismissRequest = vm::clearUpdateError,
             icon = { Icon(Icons.Rounded.ErrorOutline, null, tint = Critical) },
             title = { Text(stringResource(R.string.update_error_title)) },
-            text = { Text(stringResource(updateErrorText(state.error))) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(updateErrorText(state.error)))
+                    state.details?.let { details ->
+                        Text(stringResource(R.string.update_error_details, details), color = TextSecondary, fontSize = 12.sp)
+                    }
+                }
+            },
             confirmButton = { TextButton(vm::clearUpdateError) { Text(stringResource(R.string.close)) } },
         )
         UpdateState.Checking, UpdateState.Idle, is UpdateState.Downloading, is UpdateState.Installing -> Unit
