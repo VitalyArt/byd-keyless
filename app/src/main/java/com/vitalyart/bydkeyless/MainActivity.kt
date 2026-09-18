@@ -15,8 +15,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.vitalyart.bydkeyless.model.VehicleCommand
 import com.vitalyart.bydkeyless.ui.*
+import com.vitalyart.bydkeyless.update.AppUpdateManager
 
 class MainActivity : AppCompatActivity() {
     private val viewModel by viewModels<MainViewModel>()
@@ -40,6 +42,12 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) pendingDangerous?.let { viewModel.execute(it, confirmed = true) }
         pendingDangerous = null
     }
+    private val unknownSourcesLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (packageManager.canRequestPackageInstalls()) launchUpdateInstaller()
+    }
+    private val updateInstallerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        (application as KeylessApplication).graph.updateManager.installationCancelled()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +57,7 @@ class MainActivity : AppCompatActivity() {
                 onKeyAction = ::handleKeyAction,
                 onBackgroundSettings = ::openBackgroundSettings,
                 onDangerousCommand = ::confirmDangerous,
+                onInstallUpdate = ::installUpdate,
             )
         }
     }
@@ -110,6 +119,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun openBackgroundSettings() {
         startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    }
+
+    private fun installUpdate() {
+        if (!packageManager.canRequestPackageInstalls()) {
+            unknownSourcesLauncher.launch(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
+            )
+            return
+        }
+        launchUpdateInstaller()
+    }
+
+    private fun launchUpdateInstaller() {
+        val manager = (application as KeylessApplication).graph.updateManager
+        val file = manager.readyFile ?: return
+        val uri = FileProvider.getUriForFile(this, "$packageName.updates", file)
+        manager.markInstalling()
+        updateInstallerLauncher.launch(
+            Intent(Intent.ACTION_VIEW).setDataAndType(uri, AppUpdateManager.APK_MIME)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
+        )
     }
 
     private companion object {
