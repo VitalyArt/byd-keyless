@@ -5,6 +5,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.vitalyart.bydkeyless.BuildConfig
 import com.vitalyart.bydkeyless.R
 import com.vitalyart.bydkeyless.KeylessApplication
 import com.vitalyart.bydkeyless.ble.ActionAvailability
@@ -15,6 +16,7 @@ import com.vitalyart.bydkeyless.network.WatchNetworkException
 import com.vitalyart.bydkeyless.network.WatchNetworkFailure
 import com.vitalyart.bydkeyless.service.KeylessService
 import com.vitalyart.bydkeyless.quick.QuickCommandPhase
+import com.vitalyart.bydkeyless.update.UpdateState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -51,6 +53,9 @@ data class MainUiState(
     val watchCountryCode: String = "UZ",
     val language: String = "system",
     val permissionState: PermissionState = PermissionState.UNKNOWN,
+    val currentAppVersion: String = BuildConfig.VERSION_NAME,
+    val includePrereleaseUpdates: Boolean = false,
+    val updateState: UpdateState = UpdateState.Idle,
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -68,6 +73,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { graph.ble.connectionState.collect { _ui.update { s -> s.copy(bleState = it, bleError = graph.ble.lastError) } } }
         viewModelScope.launch { graph.ble.telemetry.collect { _ui.update { s -> s.copy(telemetry = it) } } }
         viewModelScope.launch { graph.proximity.state.collect { _ui.update { s -> s.copy(proximity = it) } } }
+        viewModelScope.launch { graph.updateManager.state.collect { value -> _ui.update { it.copy(updateState = value) } } }
         viewModelScope.launch { graph.quickCommands.state.collect { quick ->
             when (quick.phase) {
                 QuickCommandPhase.IDLE -> Unit
@@ -83,6 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } }
+        graph.updateManager.check(manual = false)
     }
 
     fun beginAuthorization() {
@@ -307,6 +314,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setExperimental(enabled: Boolean) { graph.store.experimentalEnabled = enabled; _ui.update { it.copy(experimental = enabled) } }
 
+    fun checkForUpdates() = graph.updateManager.check(manual = true)
+    fun downloadUpdate() = graph.updateManager.download()
+    fun dismissUpdatePrompt() = graph.updateManager.dismissPrompt()
+    fun clearUpdateError() = graph.updateManager.clearError()
+    fun setPrereleaseUpdates(enabled: Boolean) {
+        _ui.update { it.copy(includePrereleaseUpdates = enabled) }
+        graph.updateManager.setIncludePrereleases(enabled)
+    }
+
     fun logout() {
         startJob?.cancel()
         calibrationJob?.cancel()
@@ -335,6 +351,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             manualLockVerified = graph.store.manualLockVerified,
             watchCountryCode = WatchRegions.byCode(graph.store.watchCountryCode).code,
             language = graph.store.language,
+            currentAppVersion = BuildConfig.VERSION_NAME,
+            includePrereleaseUpdates = graph.updateManager.includePrereleases,
+            updateState = graph.updateManager.state.value,
         )
     }
 

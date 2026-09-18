@@ -43,6 +43,8 @@ import com.vitalyart.bydkeyless.R
 import com.vitalyart.bydkeyless.ble.ActionAvailability
 import com.vitalyart.bydkeyless.model.*
 import com.vitalyart.bydkeyless.network.WatchRegions
+import com.vitalyart.bydkeyless.update.UpdateError
+import com.vitalyart.bydkeyless.update.UpdateState
 import java.text.NumberFormat
 
 private val Night = Color(0xFF070A0D)
@@ -82,6 +84,7 @@ fun KeylessApp(
     onKeyAction: () -> Unit,
     onBackgroundSettings: () -> Unit,
     onDangerousCommand: (VehicleCommand) -> Unit,
+    onInstallUpdate: () -> Unit,
 ) {
     val state by viewModel.ui.collectAsStateWithLifecycle()
     MaterialTheme(colorScheme = KeylessColors, typography = KeylessTypography) {
@@ -89,9 +92,10 @@ fun KeylessApp(
             if (state.profile == null) {
                 AuthorizationScreen(state, viewModel::beginAuthorization, viewModel::selectWatchCountry)
             } else {
-                MainShell(state, viewModel, onKeyAction, onBackgroundSettings, onDangerousCommand)
+                MainShell(state, viewModel, onKeyAction, onBackgroundSettings, onDangerousCommand, onInstallUpdate)
             }
         }
+        UpdatePrompt(state.updateState, viewModel, onInstallUpdate)
     }
 }
 
@@ -233,6 +237,7 @@ private fun MainShell(
     keyAction: () -> Unit,
     backgroundSettings: () -> Unit,
     dangerous: (VehicleCommand) -> Unit,
+    installUpdate: () -> Unit,
 ) {
     var tabName by rememberSaveable { mutableStateOf(MainTab.HOME.name) }
     val tab = runCatching { MainTab.valueOf(tabName) }.getOrDefault(MainTab.HOME)
@@ -258,7 +263,7 @@ private fun MainShell(
         when (tab) {
             MainTab.HOME -> HomeScreen(state, vm, keyAction, Modifier.padding(padding))
             MainTab.CONTROLS -> ControlsScreen(state, vm, dangerous, Modifier.padding(padding))
-            MainTab.SETTINGS -> SettingsScreen(state, vm, keyAction, backgroundSettings, Modifier.padding(padding))
+            MainTab.SETTINGS -> SettingsScreen(state, vm, keyAction, backgroundSettings, installUpdate, Modifier.padding(padding))
         }
     }
 }
@@ -476,6 +481,7 @@ private fun SettingsScreen(
     vm: MainViewModel,
     keyAction: () -> Unit,
     backgroundSettings: () -> Unit,
+    installUpdate: () -> Unit,
     modifier: Modifier,
 ) {
     var confirmLogout by rememberSaveable { mutableStateOf(false) }
@@ -517,6 +523,7 @@ private fun SettingsScreen(
             }
         }
         item { LanguageSetting(state.language, vm::setLanguage) }
+        item { UpdateSettingsCard(state, vm, installUpdate) }
         item { BackgroundDiagnostics(state) }
         item {
             SectionCard(R.string.background_title, Icons.Rounded.BatterySaver) {
@@ -541,6 +548,89 @@ private fun SettingsScreen(
         dismissButton = { TextButton({ confirmLogout = false }) { Text(stringResource(R.string.cancel)) } },
         confirmButton = { TextButton({ confirmLogout = false; vm.logout() }) { Text(stringResource(R.string.delete_key), color = Critical) } },
     )
+}
+
+@Composable
+private fun UpdateSettingsCard(state: MainUiState, vm: MainViewModel, installUpdate: () -> Unit) {
+    val update = state.updateState
+    SectionCard(R.string.update_title, Icons.Rounded.SystemUpdate) {
+        Text(stringResource(R.string.update_current_version, state.currentAppVersion), color = TextSecondary, fontSize = 13.sp)
+        SettingSwitch(
+            R.string.update_prerelease_channel,
+            state.includePrereleaseUpdates,
+            update !is UpdateState.Downloading && update !is UpdateState.ReadyToInstall && update !is UpdateState.Installing,
+            vm::setPrereleaseUpdates,
+        )
+        when (update) {
+            UpdateState.Checking -> Row(verticalAlignment = Alignment.CenterVertically) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Spacer(Modifier.width(10.dp)); Text(stringResource(R.string.update_checking), color = TextSecondary)
+            }
+            is UpdateState.Available -> {
+                Text(stringResource(R.string.update_available, update.release.version.toString()), fontWeight = FontWeight.SemiBold)
+                Button(vm::downloadUpdate, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.update_download)) }
+            }
+            is UpdateState.Downloading -> {
+                Text(stringResource(R.string.update_downloading, update.release.version.toString()), fontWeight = FontWeight.SemiBold)
+                if (update.progress != null) {
+                    LinearProgressIndicator(progress = { update.progress / 100f }, modifier = Modifier.fillMaxWidth())
+                    Text(stringResource(R.string.update_progress, update.progress), color = TextSecondary, fontSize = 12.sp)
+                } else LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            }
+            is UpdateState.ReadyToInstall -> {
+                Text(stringResource(R.string.update_ready, update.release.version.toString()), fontWeight = FontWeight.SemiBold)
+                Button(installUpdate, Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text(stringResource(R.string.update_install)) }
+            }
+            is UpdateState.Installing -> Text(stringResource(R.string.update_installing), color = TextSecondary)
+            is UpdateState.Error -> Text(stringResource(updateErrorText(update.error)), color = Critical, fontSize = 13.sp)
+            UpdateState.Idle -> Text(stringResource(R.string.update_no_update), color = TextSecondary, fontSize = 13.sp)
+        }
+        OutlinedButton(
+            vm::checkForUpdates,
+            enabled = update !is UpdateState.Checking && update !is UpdateState.Downloading && update !is UpdateState.ReadyToInstall && update !is UpdateState.Installing,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) { Icon(Icons.Rounded.Refresh, null); Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.update_check)) }
+    }
+}
+
+@Composable
+private fun UpdatePrompt(state: UpdateState, vm: MainViewModel, installUpdate: () -> Unit) {
+    when (state) {
+        is UpdateState.Available -> if (state.prompt) AlertDialog(
+            onDismissRequest = vm::dismissUpdatePrompt,
+            icon = { Icon(Icons.Rounded.SystemUpdate, null, tint = Electric) },
+            title = { Text(stringResource(R.string.update_dialog_title)) },
+            text = { Text(stringResource(R.string.update_dialog_message, state.release.version.toString())) },
+            dismissButton = { TextButton(vm::dismissUpdatePrompt) { Text(stringResource(R.string.update_later)) } },
+            confirmButton = { Button(vm::downloadUpdate) { Text(stringResource(R.string.update_download)) } },
+        )
+        is UpdateState.ReadyToInstall -> if (state.prompt) AlertDialog(
+            onDismissRequest = vm::dismissUpdatePrompt,
+            icon = { Icon(Icons.Rounded.InstallMobile, null, tint = Electric) },
+            title = { Text(stringResource(R.string.update_ready_title)) },
+            text = { Text(stringResource(R.string.update_ready_message, state.release.version.toString())) },
+            dismissButton = { TextButton(vm::dismissUpdatePrompt) { Text(stringResource(R.string.update_later)) } },
+            confirmButton = { Button(installUpdate) { Text(stringResource(R.string.update_install)) } },
+        )
+        is UpdateState.Error -> if (state.showDialog) AlertDialog(
+            onDismissRequest = vm::clearUpdateError,
+            icon = { Icon(Icons.Rounded.ErrorOutline, null, tint = Critical) },
+            title = { Text(stringResource(R.string.update_error_title)) },
+            text = { Text(stringResource(updateErrorText(state.error))) },
+            confirmButton = { TextButton(vm::clearUpdateError) { Text(stringResource(R.string.close)) } },
+        )
+        UpdateState.Checking, UpdateState.Idle, is UpdateState.Downloading, is UpdateState.Installing -> Unit
+    }
+}
+
+@StringRes
+private fun updateErrorText(error: UpdateError): Int = when (error) {
+    UpdateError.NETWORK -> R.string.update_error_network
+    UpdateError.RELEASE_INVALID -> R.string.update_error_release
+    UpdateError.DOWNLOAD_FAILED -> R.string.update_error_download
+    UpdateError.CHECKSUM_MISMATCH -> R.string.update_error_checksum
+    UpdateError.PACKAGE_INVALID -> R.string.update_error_package
+    UpdateError.SIGNATURE_MISMATCH -> R.string.update_error_signature
 }
 
 @Composable

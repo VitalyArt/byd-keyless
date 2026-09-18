@@ -11,6 +11,7 @@ import com.vitalyart.bydkeyless.proximity.DefaultProximityKeyManager
 import com.vitalyart.bydkeyless.quick.AndroidQuickCommandPreflight
 import com.vitalyart.bydkeyless.quick.QuickCommandExecutor
 import com.vitalyart.bydkeyless.storage.SecureSessionStore
+import com.vitalyart.bydkeyless.update.AppUpdateManager
 import com.vitalyart.bydkeyless.widget.QuickControlWidget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,7 @@ class KeylessApplication : Application() {
             controller = ble,
             preflight = AndroidQuickCommandPreflight(this),
         )
+        val updateManager = AppUpdateManager(this, store, applicationScope)
         graph = AppGraph(
             store = store,
             auth = BydWatchAuthRepository(WatchConfig(countryCode = store.watchCountryCode, watchImei = store.watchImei())),
@@ -45,6 +47,7 @@ class KeylessApplication : Application() {
             proximity = proximity,
             native = native,
             quickCommands = quickCommands,
+            updateManager = updateManager,
         )
         QuickControlWidget.updateAll(this)
         applicationScope.launch {
@@ -65,4 +68,5 @@ data class AppGraph(
     val proximity: DefaultProximityKeyManager,
     val native: BydNativeFacade,
     val quickCommands: QuickCommandExecutor,
+    val updateManager: AppUpdateManager,
 )

@@ -30,6 +30,28 @@ class SecureSessionStore(context: Context) {
         get() = prefs.getString("language", "system") ?: "system"
         set(value) { prefs.edit().putString("language", value).apply() }
 
+    var updatePrereleases: Boolean
+        get() = prefs.getBoolean("update_prereleases", false)
+        set(value) { prefs.edit().putBoolean("update_prereleases", value).apply() }
+    var updateLastCheckAt: Long
+        get() = prefs.getLong("update_last_check_at", 0L)
+        set(value) { prefs.edit().putLong("update_last_check_at", value).apply() }
+    var updateLastPromptAt: Long
+        get() = prefs.getLong("update_last_prompt_at", 0L)
+        set(value) { prefs.edit().putLong("update_last_prompt_at", value).apply() }
+    var updateEtag: String?
+        get() = prefs.getString("update_etag", null)
+        set(value) { prefs.edit().putStringOrRemove("update_etag", value).apply() }
+    var updateCachedRelease: String?
+        get() = prefs.getString("update_cached_release", null)
+        set(value) { prefs.edit().putStringOrRemove("update_cached_release", value).apply() }
+    var updateDownloadId: Long
+        get() = prefs.getLong("update_download_id", -1L)
+        set(value) { prefs.edit().putLong("update_download_id", value).apply() }
+    var updateDownloadRelease: String?
+        get() = prefs.getString("update_download_release", null)
+        set(value) { prefs.edit().putStringOrRemove("update_download_release", value).apply() }
+
     fun saveSession(token: WatchToken, profile: VehicleProfile) {
         bindVehicle(profile.vin)
         val json = JSONObject().apply {
@@ -165,6 +187,9 @@ class SecureSessionStore(context: Context) {
         }.generateKey()
     }
 }
+
+private fun android.content.SharedPreferences.Editor.putStringOrRemove(key: String, value: String?) =
+    if (value == null) remove(key) else putString(key, value)
 
 object VehicleScopePolicy {
     fun shouldReset(activeVin: String?, newVin: String): Boolean = activeVin != null && activeVin != newVin

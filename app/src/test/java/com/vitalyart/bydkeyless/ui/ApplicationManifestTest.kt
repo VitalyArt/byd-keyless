@@ -39,6 +39,16 @@ class ApplicationManifestTest {
         assertTrue(elements("AndroidManifest.xml", "receiver").any { it.android("name") == ".widget.QuickControlWidget" })
     }
 
+    @Test fun updaterUsesPrivateFileProviderAndInstallerPermission() {
+        val permissions = elements("AndroidManifest.xml", "uses-permission").map { it.android("name") }
+        assertTrue(permissions.contains("android.permission.REQUEST_INSTALL_PACKAGES"))
+        val provider = elements("AndroidManifest.xml", "provider")
+            .single { it.android("name") == "androidx.core.content.FileProvider" }
+        assertEquals("false", provider.android("exported"))
+        assertEquals("true", provider.android("grantUriPermissions"))
+        assertEquals("${'$'}{applicationId}.updates", provider.android("authorities"))
+    }
+
     private fun elements(file: String, tag: String): List<Element> {
         val document = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
             .newDocumentBuilder().parse(File(main, file))
