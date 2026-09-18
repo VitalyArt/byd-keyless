@@ -36,7 +36,7 @@ class KeylessService : Service() {
     private var monitoredProfile: VehicleProfile? = null
     private var foregroundReady = false
     private var wakeLock: PowerManager.WakeLock? = null
-    private var lastNotificationText: String? = null
+    private var lastNotificationState: com.vitalyart.bydkeyless.quick.QuickSurfaceState? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -80,6 +80,7 @@ class KeylessService : Service() {
             else if (graph.store.keylessMode != KeylessMode.OFF) graph.proximity.onTelemetry(telemetry)
             refreshSurfaces()
         } }
+        scope.launch { graph.store.changes.collectLatest { refreshSurfaces() } }
         scope.launch { graph.ble.connectionState.collectLatest { refreshSurfaces() } }
         scope.launch { graph.quickCommands.state.collectLatest { refreshSurfaces() } }
         scope.launch { graph.proximity.state.collectLatest { refreshSurfaces() } }
@@ -136,10 +137,10 @@ class KeylessService : Service() {
 
     private fun refreshSurfaces() {
         updateWakeLock()
-        val text = notificationText()
-        if (text != lastNotificationText) {
-            lastNotificationText = text
-            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(text))
+        val state = com.vitalyart.bydkeyless.quick.quickSurfaceState(this, graph)
+        if (state != lastNotificationState) {
+            lastNotificationState = state
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(state))
         }
         QuickControlWidget.updateAll(this)
     }
@@ -160,33 +161,16 @@ class KeylessService : Service() {
         }
     }
 
-    private fun notificationText(): String {
-        val quick = graph.quickCommands.state.value
-        return when (quick.phase) {
-            QuickCommandPhase.CONNECTING -> appString(R.string.quick_connecting)
-            QuickCommandPhase.EXECUTING -> appString(R.string.message_executing)
-            QuickCommandPhase.SUCCESS -> appString(R.string.message_command_success)
-            QuickCommandPhase.ERROR -> quick.error?.let { appString(it.messageResource()) } ?: appString(R.string.status_error)
-            QuickCommandPhase.IDLE -> if (graph.proximity.state.value.needsConfirmation && graph.store.keylessMode == KeylessMode.AUTO_UNLOCK_LOCK) appString(R.string.automation_needs_confirmation) else graph.ble.lastError?.let { appString(it.messageResource()) } ?: if (graph.ble.connectionState.value == BleConnectionState.READY) appString(R.string.key_service_connected) else appString(R.string.key_service_scanning)
-        }
-    }
-
     private fun promoteForeground() {
         val types = if (Build.VERSION.SDK_INT >= 29) {
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
         } else 0
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(notificationText()), types)
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(com.vitalyart.bydkeyless.quick.quickSurfaceState(this, graph)), types)
     }
 
-    private fun notification(text: String): Notification {
+    private fun notification(state: com.vitalyart.bydkeyless.quick.QuickSurfaceState): Notification {
         val open = PendingIntent.getActivity(this, 1, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val builder = NotificationCompat.Builder(this, CHANNEL_ID).setSmallIcon(R.drawable.ic_notification_key)
-            .setContentTitle(appString(R.string.key_service_title)).setContentText(text).setContentIntent(open)
-            .setOngoing(true).setOnlyAlertOnce(true).setCategory(NotificationCompat.CATEGORY_SERVICE)
-        builder.addAction(R.drawable.ic_quick_unlock, appString(R.string.action_unlock), commandPendingIntent(VehicleCommand.UNLOCK, 10))
-        builder.addAction(R.drawable.ic_quick_lock, appString(R.string.action_lock), commandPendingIntent(VehicleCommand.LOCK, 11))
-        builder.addAction(R.drawable.ic_quick_trunk, appString(R.string.widget_trunk), commandPendingIntent(VehicleCommand.OPEN_TRUNK, 12))
-        return builder.build()
+        return com.vitalyart.bydkeyless.quick.buildQuickNotification(this, CHANNEL_ID, graph.store.language, state, open, ::commandPendingIntent)
     }
 
     private fun commandPendingIntent(command: VehicleCommand, requestCode: Int): PendingIntent = PendingIntent.getForegroundService(

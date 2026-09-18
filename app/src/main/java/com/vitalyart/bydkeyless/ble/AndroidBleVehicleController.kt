@@ -24,14 +24,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import no.nordicsemi.android.ble.BleManager
 import no.nordicsemi.android.ble.observer.ConnectionObserver
-import kotlin.math.pow
 
 @SuppressLint("MissingPermission")
 class AndroidBleVehicleController(
     private val context: Context,
     private val native: BydNativeFacade,
-    private val calibration: () -> ProximityCalibration? = { null },
-    private val keylessMode: () -> KeylessMode = { KeylessMode.OFF },
     private val clock: () -> Long = SystemClock::elapsedRealtime,
 ) : BleVehicleController {
     // Keep every Android GATT transition on the main looper, matching BYD's
@@ -54,14 +51,10 @@ class AndroidBleVehicleController(
     private var reconnectJob: Job? = null
     private var authenticationTimeoutJob: Job? = null
     private var manualDisconnect = false
-    private var smoothedRssi: Double? = null
     private var authenticationStage = AuthenticationStage.NONE
-    private var lastPassiveEntryAt = Long.MIN_VALUE
     private var lastBleActivityAt = Long.MIN_VALUE
     private var reconnectAttempt = 0
-    private var fastRssiUntilMillis = 0L
 
-    fun requestCalibrationSampling() { fastRssiUntilMillis = clock() + 15_000L }
     private var nordic: BydNordicManager? = null
     private var generation = 0L
     private var scanTransitionJob: Job? = null
@@ -130,7 +123,6 @@ class AndroidBleVehicleController(
 
     override suspend fun disconnect() = withContext(Dispatchers.Main.immediate) {
         manualDisconnect = true
-        lastPassiveEntryAt = Long.MIN_VALUE
         reconnectAttempt = 0
         reconnectJob?.cancel()
         stopScan()
@@ -360,7 +352,7 @@ class AndroidBleVehicleController(
                     startReadyWatchdog()
                     Log.i(TAG, "BLE authentication completed; controller is ready")
                     rssiJob?.cancel()
-                    rssiJob = scope.launch { while (isActive && _state.value == BleConnectionState.READY) { nordic?.readVehicleRssi(); delay(if (keylessMode() == KeylessMode.PASSIVE_ENTRY && clock() >= fastRssiUntilMillis) 4_000L else 1_000L) } }
+                    rssiJob = scope.launch { while (isActive && _state.value == BleConnectionState.READY) { nordic?.readVehicleRssi(); delay(1_000L) } }
                     return
                 }
                 AuthenticationStage.NONE -> Unit
@@ -370,21 +362,7 @@ class AndroidBleVehicleController(
             val handleWakeLock = context.getSystemService(PowerManager::class.java)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "${context.packageName}:handle-response")
             handleWakeLock.acquire(2_000L)
-            val acknowledged = write(native.microSwitchResponse())
-            val now = clock()
-            if (acknowledged && PassiveEntryPolicy.shouldUnlock(keylessMode(), _state.value, profile, now, lastPassiveEntryAt, keyValid = profile?.hasValidKey() == true)) {
-                lastPassiveEntryAt = now
-                val session = generation
-                scope.launch {
-                    delay(PASSIVE_ENTRY_ACK_DELAY_MS)
-                    if (session != generation || keylessMode() != KeylessMode.PASSIVE_ENTRY) return@launch
-                    when (val result = execute(VehicleCommand.UNLOCK)) {
-                        CommandResult.Success -> Log.i(TAG, "Passive entry unlock confirmed by vehicle")
-                        is CommandResult.Rejected -> Log.w(TAG, "Passive entry unlock rejected: ${result.error}")
-                        is CommandResult.Failure -> Log.w(TAG, "Passive entry unlock failed: ${result.error}")
-                    }
-                }
-            }
+            write(native.microSwitchResponse())
         }
         native.commandResponse(frame)?.let { ack ->
             _telemetry.value = _telemetry.value.copy(allClosuresClosed = ack.allClosuresClosed, closuresAtMillis = clock())
@@ -420,7 +398,6 @@ class AndroidBleVehicleController(
         val old = nordic
         nordic = null // Ignore all callbacks from the retired transport.
         runCatching { old?.close() }.onFailure { Log.w(TAG, "BLE transport cleanup failed", it) }
-        smoothedRssi = null
         _telemetry.value = VehicleTelemetry(connectionGeneration = generation)
     }
 
@@ -521,15 +498,12 @@ class AndroidBleVehicleController(
 
     private fun updateRssi(rssi: Int) {
         markBleActivity()
-        smoothedRssi = smoothedRssi?.let { it * 0.75 + rssi * 0.25 } ?: rssi.toDouble()
-        val smooth = smoothedRssi ?: rssi.toDouble()
         _telemetry.value = _telemetry.value.copy(
             rssi = rssi,
             doorState = _telemetry.value.doorState.takeIf { _telemetry.value.doorStateAtMillis?.let { clock() - it in 0..30_000L } == true } ?: DoorState.UNKNOWN,
             rssiAtMillis = clock(),
             rssiSequence = _telemetry.value.rssiSequence + 1,
             nativeArea = native.rssiArea(rssi),
-            approximateMeters = calibration()?.approximateDistance(smooth) ?: 10.0.pow((-59.0 - smooth) / 22.0).coerceIn(0.1, 50.0),
         )
     }
 
@@ -546,7 +520,6 @@ class AndroidBleVehicleController(
         const val AUTHENTICATION_TIMEOUT_MS = 15_000L
         const val COMMAND_TIMEOUT_MS = 10_000L
         const val WATCHDOG_INTERVAL_MS = 2_000L
-        const val PASSIVE_ENTRY_ACK_DELAY_MS = 150L
         val ACTIVE_CONNECTION_STATES = setOf(
             BleConnectionState.SCANNING,
             BleConnectionState.CONNECTING,

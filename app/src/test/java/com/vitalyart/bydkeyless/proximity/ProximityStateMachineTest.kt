@@ -14,6 +14,16 @@ class ProximityStateMachineTest {
         m.markUnlocked()
     }
 
+    @Test fun calibrationAndZoneCheckNeverSendCommandsWithAutomationDisabled() {
+        val m = machine(unlock = false, lock = false)
+        for (time in 0L..50_000L step 1_000) {
+            val decision = m.sample(if (time < 10_000) -50 else -95, true, time, true, true)
+            assertFalse(decision.requestUnlock)
+            assertFalse(decision.requestLock)
+        }
+        assertEquals(ProximityZone.FAR, m.state().zone)
+    }
+
     @Test fun unlocksAndLocksWithContinuousSamples() {
         val m = machine(); approach(m)
         var locks = 0

@@ -98,7 +98,6 @@ enum class DoorState { UNKNOWN, LOCKED, UNLOCKED }
 data class VehicleTelemetry(
     val rssi: Int? = null,
     val nativeArea: Int? = null,
-    val approximateMeters: Double? = null,
     val doorState: DoorState = DoorState.UNKNOWN,
     val allClosuresClosed: Boolean? = null,
     val rssiAtMillis: Long? = null,
@@ -138,35 +137,20 @@ interface BleVehicleController {
     suspend fun execute(command: VehicleCommand, experimentalEnabled: Boolean = false): CommandResult
 }
 
-enum class KeylessMode { OFF, PASSIVE_ENTRY, AUTO_UNLOCK_LOCK }
+enum class KeylessMode { OFF, AUTO_UNLOCK_LOCK }
 enum class ProximityZone { UNKNOWN, FAR, APPROACHING, NEAR }
-data class ProximityCalibration(
-    val nearRssi: Int,
-    val farRssi: Int,
-    val unlockDistanceMeters: Double = DEFAULT_UNLOCK_DISTANCE_METERS,
-    val lockDistanceMeters: Double = DEFAULT_LOCK_DISTANCE_METERS,
-) {
+data class ProximityCalibration(val unlockThreshold: Double, val lockThreshold: Double) {
+    constructor(near: Int, far: Int) : this(near.toDouble(), far.toDouble())
     init {
-        require(nearRssi > farRssi)
-        require(unlockDistanceMeters in 0.5..3.0)
-        require(lockDistanceMeters in 2.0..10.0)
-        require(unlockDistanceMeters < lockDistanceMeters)
+        require(unlockThreshold.isFinite() && lockThreshold.isFinite())
+        require(unlockThreshold > lockThreshold)
     }
-    fun approximateDistance(rssi: Double): Double = kotlin.math.exp(
-        (rssi - nearRssi) / (farRssi - nearRssi) * kotlin.math.ln(5.0),
-    ).coerceIn(0.1, 50.0)
-
-    val unlockThreshold get() = rssiAt(unlockDistanceMeters)
-    val lockThreshold get() = rssiAt(lockDistanceMeters)
-
-    private fun rssiAt(distanceMeters: Double): Double {
-        val ratio = kotlin.math.ln(distanceMeters.coerceAtLeast(0.1)) / kotlin.math.ln(5.0)
-        return nearRssi + (farRssi - nearRssi) * ratio
-    }
-
     companion object {
-        const val DEFAULT_UNLOCK_DISTANCE_METERS = 1.5
-        const val DEFAULT_LOCK_DISTANCE_METERS = 4.0
+        fun fromLegacy(near: Int, far: Int, unlockMeters: Double, lockMeters: Double): ProximityCalibration {
+            require(near > far && unlockMeters in 0.5..3.0 && lockMeters in 2.0..10.0 && unlockMeters < lockMeters)
+            fun threshold(meters: Double) = near + (far - near) * (kotlin.math.ln(meters) / kotlin.math.ln(5.0))
+            return ProximityCalibration(threshold(unlockMeters), threshold(lockMeters))
+        }
     }
 }
 data class ProximityState(val zone: ProximityZone = ProximityZone.UNKNOWN, val smoothedRssi: Double? = null, val armed: Boolean = true, val needsConfirmation: Boolean = false)

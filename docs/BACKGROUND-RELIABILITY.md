@@ -25,9 +25,9 @@ Implemented after the 2026-09-05 audit. Automated verification covers Kotlin beh
 ## Energy, calibration and controls
 
 - Removed the indefinite service wake lock. Connection setup and commands use bounded locks; handle acknowledgement gets a short bounded lock. Actual Doze latency must be tested on the target phone.
-- Passive entry reads RSSI every 4 seconds; automatic proximity retains a 1-second interval. At most one RSSI read is queued. The watchdog allows a fresh read after CPU sleep before declaring the link stale.
+- Passive Entry was removed; connected signal sampling uses a 1-second interval. At most one RSSI read is queued. The watchdog allows a fresh read after CPU sleep before declaring the link stale.
 - Widget rendering skips unchanged state.
-- Calibration captures 8 distinct fresh samples from one connection, accepts at most 12 dB spread, and uses the median. Displayed distance uses the same calibration as automation thresholds.
+- Calibration captures 8 distinct fresh samples from one connection, accepts at most 12 dB spread, and uses the median. The wizard records opening and closing thresholds directly. Legacy metre settings migrate to their effective thresholds without rounding. The UI shows zones rather than a physical distance.
 - Settings include service state, BLE state/error, age of signal and vehicle responses, recovery count and last transport recovery reason. This diagnostic snapshot is in memory; no credentials or protocol payloads are stored.
 - Public launcher shortcuts require a confirmation dialog. Notification/widget PendingIntents retain their existing one-tap behavior.
 

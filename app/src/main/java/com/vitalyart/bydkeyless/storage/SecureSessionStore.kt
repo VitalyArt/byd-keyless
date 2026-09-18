@@ -16,7 +16,31 @@ import javax.crypto.spec.GCMParameterSpec
 
 class SecureSessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("keyless_state", Context.MODE_PRIVATE)
+    private var cachedCiphertext: String? = null
+    private var sessionLoaded = false
+    private var cachedSession: Pair<WatchToken, VehicleProfile>? = null
+    private val _changes = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    val changes: kotlinx.coroutines.flow.StateFlow<Long> = _changes
+    private val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "session" || key == null) { sessionLoaded = false; cachedSession = null }
+        _changes.value += 1
+    }
+    init { prefs.registerOnSharedPreferenceChangeListener(listener) }
     private val alias = "byd_keyless_session_v1"
+
+    init {
+        if (prefs.getString("keyless_mode", null) == "PASSIVE_ENTRY") {
+            prefs.edit().putString("keyless_mode", "OFF").putBoolean("auto_unlock", false)
+                .putBoolean("auto_lock", false).commit()
+        }
+        if (prefs.getInt("calibration_version", 0) != 2) calibration()?.let { saveCalibration(it) }
+    }
+
+    var theme: String
+        get() = prefs.getString("theme", "system") ?: "system"
+        set(value) { prefs.edit().putString("theme", value).apply() }
+
+    fun pauseAutomation(): Boolean = prefs.edit().putBoolean("auto_unlock", false).putBoolean("auto_lock", false).commit()
 
     fun watchImei(): String = prefs.getString("watch_imei", null) ?: generateWatchImei().also {
         prefs.edit().putString("watch_imei", it).apply()
@@ -71,8 +95,11 @@ class SecureSessionStore(context: Context) {
         prefs.edit().putString("session", encrypt(json.toString())).apply()
     }
 
-    fun loadSession(): Pair<WatchToken, VehicleProfile>? = runCatching {
-        val root = JSONObject(decrypt(prefs.getString("session", null) ?: return null))
+    fun loadSession(): Pair<WatchToken, VehicleProfile>? {
+        val ciphertext = prefs.getString("session", null)
+        if (sessionLoaded && cachedCiphertext == ciphertext) return cachedSession
+        val result = runCatching {
+        val root = JSONObject(decrypt(ciphertext ?: return@runCatching null))
         val t = root.getJSONObject("token")
         val p = root.getJSONObject("profile")
         val caps = p.optJSONArray("capabilities")
@@ -89,7 +116,12 @@ class SecureSessionStore(context: Context) {
         )
         bindVehicle(profile.vin)
         token to profile
-    }.getOrNull()
+        }.getOrNull()
+        cachedSession = result
+        cachedCiphertext = ciphertext
+        sessionLoaded = true
+        return result
+    }
 
     fun clearSession() {
         prefs.edit()
@@ -101,6 +133,7 @@ class SecureSessionStore(context: Context) {
             .putBoolean("experimental", false)
             .putBoolean("verified_unlock", false)
             .putBoolean("verified_lock", false)
+            .remove("calibration_version").remove("unlock_threshold").remove("lock_threshold")
             .remove("near_rssi")
             .remove("far_rssi")
             .remove("unlock_distance_meters")
@@ -127,23 +160,33 @@ class SecureSessionStore(context: Context) {
         get() = prefs.getBoolean("verified_lock", false)
         set(value) { prefs.edit().putBoolean("verified_lock", value).apply() }
 
-    fun calibration(): ProximityCalibration? {
-        val near = prefs.getInt("near_rssi", Int.MIN_VALUE)
-        val far = prefs.getInt("far_rssi", Int.MIN_VALUE)
-        return if (near > far && far != Int.MIN_VALUE) ProximityCalibration(
-            near, far, unlockDistanceMeters, lockDistanceMeters,
-        ) else null
+    fun calibration(): ProximityCalibration? = runCatching {
+        if (prefs.getInt("calibration_version", 0) == 2) {
+            ProximityCalibration(
+                java.lang.Double.longBitsToDouble(prefs.getLong("unlock_threshold", 0)),
+                java.lang.Double.longBitsToDouble(prefs.getLong("lock_threshold", 0)),
+            )
+        } else {
+            val near = prefs.getInt("near_rssi", Int.MIN_VALUE)
+            val far = prefs.getInt("far_rssi", Int.MIN_VALUE)
+            if (near == Int.MIN_VALUE || far == Int.MIN_VALUE) return null
+            ProximityCalibration.fromLegacy(near, far,
+                prefs.getFloat("unlock_distance_meters", 1.5f).toDouble(),
+                prefs.getFloat("lock_distance_meters", 4f).toDouble())
+        }
+    }.getOrNull()
+
+    fun saveCalibration(value: ProximityCalibration): Boolean {
+        val old = mapOf("calibration_version" to prefs.getInt("calibration_version", 0),
+            "unlock_threshold" to prefs.getLong("unlock_threshold", 0), "lock_threshold" to prefs.getLong("lock_threshold", 0))
+        val saved = prefs.edit().putInt("calibration_version", 2)
+            .putLong("unlock_threshold", java.lang.Double.doubleToRawLongBits(value.unlockThreshold))
+            .putLong("lock_threshold", java.lang.Double.doubleToRawLongBits(value.lockThreshold)).commit()
+        if (!saved) prefs.edit().putInt("calibration_version", old.getValue("calibration_version").toInt())
+            .putLong("unlock_threshold", old.getValue("unlock_threshold").toLong())
+            .putLong("lock_threshold", old.getValue("lock_threshold").toLong()).commit()
+        return saved
     }
-    fun saveCalibration(value: ProximityCalibration): Boolean =
-        prefs.edit().putInt("near_rssi", value.nearRssi).putInt("far_rssi", value.farRssi)
-            .putFloat("unlock_distance_meters", value.unlockDistanceMeters.toFloat())
-            .putFloat("lock_distance_meters", value.lockDistanceMeters.toFloat()).commit()
-    var unlockDistanceMeters: Double
-        get() = prefs.getFloat("unlock_distance_meters", ProximityCalibration.DEFAULT_UNLOCK_DISTANCE_METERS.toFloat()).toDouble()
-        set(value) { prefs.edit().putFloat("unlock_distance_meters", value.toFloat()).apply() }
-    var lockDistanceMeters: Double
-        get() = prefs.getFloat("lock_distance_meters", ProximityCalibration.DEFAULT_LOCK_DISTANCE_METERS.toFloat()).toDouble()
-        set(value) { prefs.edit().putFloat("lock_distance_meters", value.toFloat()).apply() }
 
     private fun bindVehicle(vin: String) {
         val active = prefs.getString("active_vehicle_vin", null)
@@ -155,7 +198,8 @@ class SecureSessionStore(context: Context) {
                 .putBoolean("experimental", false)
                 .putBoolean("verified_unlock", false)
                 .putBoolean("verified_lock", false)
-                .remove("near_rssi")
+                .remove("calibration_version").remove("unlock_threshold").remove("lock_threshold")
+            .remove("near_rssi")
                 .remove("far_rssi")
                 .remove("unlock_distance_meters")
                 .remove("lock_distance_meters")

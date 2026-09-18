@@ -1,27 +1,26 @@
 package com.vitalyart.bydkeyless.proximity
 
 import com.vitalyart.bydkeyless.model.ProximityCalibration
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.*
 import org.junit.Test
 
 class ProximityCalibrationTest {
-    @Test fun convertsConfiguredMetersToCalibratedRssiThresholds() {
-        val calibration = ProximityCalibration(-55, -85, unlockDistanceMeters = 1.0, lockDistanceMeters = 5.0)
-        assertEquals(-55.0, calibration.unlockThreshold, 0.001)
-        assertEquals(-85.0, calibration.lockThreshold, 0.001)
+    @Test fun measuredPointsAreDirectThresholds() {
+        val calibration = ProximityCalibration(-55, -85)
+        assertEquals(-55.0, calibration.unlockThreshold, 0.0)
+        assertEquals(-85.0, calibration.lockThreshold, 0.0)
     }
-
-    @Test fun displayedDistanceUsesTheSameCalibrationAsThresholds() {
-        val calibration = ProximityCalibration(-55, -85, 1.5, 4.0)
-        assertEquals(1.5, calibration.approximateDistance(calibration.unlockThreshold), 0.001)
-        assertEquals(4.0, calibration.approximateDistance(calibration.lockThreshold), 0.001)
+    @Test fun migrationPreservesLegacyThresholdsWithoutRounding() {
+        val calibration = ProximityCalibration.fromLegacy(-55, -85, 1.5, 4.0)
+        assertEquals(-55 + (-85 + 55) * (kotlin.math.ln(1.5) / kotlin.math.ln(5.0)), calibration.unlockThreshold, 0.0)
+        assertEquals(-55 + (-85 + 55) * (kotlin.math.ln(4.0) / kotlin.math.ln(5.0)), calibration.lockThreshold, 0.0)
     }
-
-    @Test fun fartherConfiguredDistanceProducesWeakerThreshold() {
-        val nearLock = ProximityCalibration(-55, -85, 1.5, 3.0)
-        val farLock = ProximityCalibration(-55, -85, 1.5, 8.0)
-        assertTrue(farLock.lockThreshold < nearLock.lockThreshold)
-        assertTrue(nearLock.unlockThreshold > nearLock.lockThreshold)
+    @Test fun referencePointMigrationHasNoOffset() {
+        assertEquals(ProximityCalibration(-55, -85), ProximityCalibration.fromLegacy(-55, -85, 1.0, 5.0))
+    }
+    @Test fun rejectsEqualReversedAndNonFinitePoints() {
+        listOf(-55.0 to -55.0, -85.0 to -55.0, Double.NaN to -85.0, -55.0 to Double.NEGATIVE_INFINITY).forEach { (near, far) ->
+            assertTrue(runCatching { ProximityCalibration(near, far) }.isFailure)
+        }
     }
 }
