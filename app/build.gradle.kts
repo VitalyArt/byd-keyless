@@ -20,6 +20,9 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (providers.gradleProperty("uiPreview").orNull == "true") applicationIdSuffix = ".preview"
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

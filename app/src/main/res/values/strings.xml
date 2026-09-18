@@ -17,7 +17,7 @@
     <string name="qr_expired">QR code expired</string>
     <string name="qr_preparing">Preparing secure sign-in…</string>
     <string name="qr_content_description">QR code for BYD AUTO sign-in</string>
-    <string name="tab_key">Key</string>
+    <string name="tab_key">Vehicle</string>
     <string name="tab_controls">Controls</string>
     <string name="tab_settings">Settings</string>
     <string name="vehicle_fallback">BYD vehicle</string>
@@ -58,9 +58,9 @@
     <string name="approximate_distance">Approximate distance</string>
     <string name="distance_meters">%1$s m</string>
     <string name="proximity_near">Nearby</string>
-    <string name="proximity_approaching">Approaching</string>
+    <string name="proximity_approaching">Between points</string>
     <string name="proximity_far">Far away</string>
-    <string name="proximity_unknown">No proximity data</string>
+    <string name="proximity_unknown">No data</string>
     <string name="metric_signal">Signal</string>
     <string name="metric_zone">Zone</string>
     <string name="metric_doors">Doors</string>
@@ -85,8 +85,8 @@
     <string name="access_mode">Access mode</string>
     <string name="mode_off">Off</string>
     <string name="mode_off_description">Bluetooth key and background connection are stopped.</string>
-    <string name="mode_passive">Passive entry</string>
-    <string name="mode_passive_description">Keeps the authenticated key ready for the vehicle handle.</string>
+
+
     <string name="mode_auto">Automatic access</string>
     <string name="mode_auto_description">Unlocks on approach and locks after you leave.</string>
     <string name="automation">Automation</string>
@@ -209,4 +209,43 @@
     <string name="update_error_checksum">The downloaded file failed its integrity check and was deleted.</string>
     <string name="update_error_package">The downloaded file is not a valid BYD Keyless update and was deleted.</string>
     <string name="update_error_signature">The update is signed with a different certificate. A debug build cannot be updated with a release APK.</string>
+    <string name="tab_access">Auto access</string>
+    <string name="key_status">Digital key</string>
+    <string name="last_known_state">Last reported lock state</string>
+    <string name="more_controls">All controls</string>
+    <string name="back">Back</string>
+    <string name="appearance">Appearance</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="points_ready">Both points are configured</string>
+    <string name="points_missing">Set up your access points</string>
+    <string name="zone_explanation">Bluetooth estimates a zone, not an exact distance. Opening requires 3 seconds of steady signal; closing requires 10 seconds and confirmed closed doors.</string>
+    <string name="setup_points">Set up points</string>
+    <string name="change_open_point">Change opening point</string>
+    <string name="change_close_point">Change closing point</string>
+    <string name="test_zones">Check zones</string>
+    <string name="step_of_four">Step %1$d of 4</string>
+    <string name="prepare_points">Before you start</string>
+    <string name="prepare_points_body">Park the vehicle and connect the key. Hold your phone the same way at both points. Starting disables automatic opening and closing; enable them separately after setup.</string>
+    <string name="open_point">Opening point</string>
+    <string name="close_point">Closing point</string>
+    <string name="open_point_body">Stand where you want the car to open. Keep still and measure the signal.</string>
+    <string name="close_point_body">Move to where you want the car to lock. Keep still and measure the signal.</string>
+    <string name="review_points">Save your points</string>
+    <string name="review_points_body">Opening point measured. Closing point measured. Save to replace the previous settings.</string>
+    <string name="points_saved_body">Your points are saved. Automatic opening and closing remain off. Enable them on the Auto access screen when ready.</string>
+    <string name="test_zones_body">Walk toward and away from the car. Zones use the normal signal delays. No automatic commands are sent. Enable automation separately after checking.</string>
+    <string name="connection_label">Connection: %1$s</string>
+    <string name="connect_key">Connect key</string>
+    <string name="begin_measurement">Start</string>
+    <string name="samples_progress">%1$d of 8 samples</string>
+    <string name="measure_again">Measure again</string>
+    <string name="measure_point">Measure signal</string>
+    <string name="next_step">Next</string>
+    <string name="done">Done</string>
+    <string name="measurement_interrupted">Measurement interrupted. Please try again.</string>
+    <string name="quick_action_progress">%1$s — in progress</string>
+    <string name="quick_action_success">%1$s — command completed</string>
+    <string name="automation_off">Automatic commands off</string>
 </resources>

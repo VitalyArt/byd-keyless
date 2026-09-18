@@ -25,8 +25,9 @@
         <item name="android:textStyle">bold</item>
     </style>
     <color name="launcher_background">#070A0D</color>
-    <color name="widget_ready">#E5FF56</color>
+    <color name="widget_ready">#315D96</color>
     <color name="widget_working">#FFCA58</color>
     <color name="widget_error">#FF6B6B</color>
-    <color name="widget_muted">#91A4A8</color>
+    <color name="widget_muted">#505C6E</color>
+    <color name="widget_text">#191C22</color>
 </resources>

@@ -1,33 +1,49 @@
-# Documentation screenshots
+# Interface screenshots
 
-This directory contains real captures of BYD Keyless on an ARM64 Android phone, with the app language set to English. The main [README](../../README.md) displays the selected screens.
+## Redesign previews
 
-## Included captures
+The `*-light-*.png` and `*-dark-*.png` files are device captures from the isolated `com.vitalyart.bydkeyless.preview` package, using fictional vehicle state. They show the actual Compose screens, widget RemoteViews and Android notification template. They do **not** demonstrate a vehicle connection or successful physical command.
 
-Captured on 2026-09-02 from the updated 0.1.0 build without voice control. Except for the redacted QR image described below, the files are unedited 1080 × 2340 PNG device screenshots.
+| Vehicle, light | Vehicle, dark | Point calibration |
+| --- | --- | --- |
+| ![Vehicle light](home-light-en.png) | ![Vehicle dark](home-dark-en.png) | ![Measurement](measure-light-en.png) |
 
-- [Welcome](welcome.png): signed-out landing page with region selection and QR-code creation.
-- [QR sign-in](qr-sign-in-redacted.png): authorization screen with the entire QR code hidden at the owner's request. This is an AI-edited derivative of a real screenshot, exported at 852 × 1846; it is not a pixel-exact original capture.
-- [Digital key](key.png): vehicle overview, the app's masked VIN and current digital key status. The original VIN masking is unchanged.
-- [Vehicle controls](controls.png): capability-based access and locate actions.
-- [Access modes](access-settings.png): Off, Passive entry and Automatic access, with both automation switches disabled.
-- [Safety and background operation](safety-settings.png): experimental-control warnings, language selection and background-service guidance.
+| Auto access | Widgets | Notification template |
+| --- | --- | --- |
+| ![Access](access-light-en.png) | ![Widgets](widgets-light-en.png) | ![Notification](notification-light-en.png) |
 
-Automatic unlock/lock were disabled for all captures. The digital-key screen was captured with the key active; controls and settings were captured with it stopped. The owner subsequently signed out before the welcome and QR captures. No sign-in was approved and no vehicle commands were invoked for the screenshots. No connection or command-success state was staged. The displayed distance is a signal-based estimate, not a verified measurement. The owner permitted the visible VIN suffix and requested full QR redaction. The unredacted QR capture is not included in this repository.
+Additional captures cover English settings, dark widgets and a 160% font scale. Every documentation screenshot is in English. Notification previews inflate the real Android template inside the preview activity on a matching system-theme surface; the actual notification drawer controls background, expansion and action visibility. Widget previews inflate both compact and expanded layouts inside the activity; launcher-specific sizing remains a separate check.
 
-## QR privacy edit
+## Reproduce without vehicle access
 
-The built-in imagegen tool covered the complete QR pattern with an opaque panel. The edited image was visually reviewed to confirm that no QR modules remain visible. The panel is a documentation edit, not an app feature.
+Build with JDK 17 and the configured Android SDK:
 
-Editing prompt: “Cover the entire QR pattern, including all finder squares and modules, with a completely opaque dark-gray square labeled QR CODE HIDDEN. Preserve the white card and Waiting for scan caption. Change only the QR area; preserve the rest of the screenshot, its text, icons, colors, proportions and framing. Do not add a scannable code.”
+```sh
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest -PuiPreview=true
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb shell am start -S -W -n com.vitalyart.bydkeyless.preview/com.vitalyart.bydkeyless.DesignPreviewActivity --es screen home --es theme light --es language en
+adb exec-out screencap -p > home-light-en.png
+```
 
-## Capture guidelines
+Available screens: `home`, `access`, `prepare`, `measure`, `review`, `error`, `settings`, `welcome`, `widgets`, `notification`. Themes: `light` and `dark`; the documentation capture language is `en`; optional `--ef fontScale 1.6`.
 
-- Use the current app build and English interface text.
-- Disable automatic access before navigating the app for documentation. Do not invoke vehicle commands or change calibration values just to demonstrate a state.
-- Include VINs only with the owner's explicit permission. Fully cover authorization QR codes before publication; do not rely on a light blur. Keep tokens, control passwords, BLE keys, account details and unrelated notifications out of the frame.
-- Capture only the app, not a personal launcher, notification shade or lock screen.
-- Preserve the actual UI: do not invent connection status, sensor readings or successful command results.
-- Save captures as PNG files with descriptive lowercase names, review them at full resolution, and use relative image links so they render on GitHub.
+The preview activity exists only in debug builds and refuses to run unless the application ID ends in `.preview`. The main app installation, credentials and vehicle settings are not modified. Home command callbacks are inert, widget preview click listeners are removed, and notification preview buttons only reopen the preview activity. The harness can show above the lock screen and keeps the display awake while open.
 
-Screenshots illustrate the interface, not vehicle compatibility or a successful real-world control test. Available controls and status vary with the vehicle, credential and connection state.
+Run isolated device checks:
+
+```sh
+adb shell am instrument -w -e class com.vitalyart.bydkeyless.storage.SettingsMigrationTest,com.vitalyart.bydkeyless.quick.QuickSurfaceTest com.vitalyart.bydkeyless.preview.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+The settings tests refuse to run against the main app package. They cover removal of Passive Entry, legacy threshold migration, persisted automation pause, failed-save rollback and session reset. Surface tests cover notification action order/busy state and widget layout inflation/disabled actions.
+
+## Validation performed
+
+Validated on a Samsung SM-S936B running Android 16 (API 36): five instrumented tests passed. The final standard debug build passed 67 JVM tests and Android lint (zero errors; warnings remain). Preview and test packages were removed after capture; the main installed app was not updated or modified.
+
+Design references: [Android navigation](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns), [accessibility](https://developer.android.com/design/ui/mobile/guides/foundations/accessibility), [widget guidance](https://developer.android.com/design/ui/mobile/guides/widgets), [system notification templates](https://developer.android.com/develop/ui/views/notifications/custom-notification), and [progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/).
+
+## Remaining device acceptance
+
+Check actual launcher placement and resizing with multiple widget instances, TalkBack navigation, Android 8/12 layouts, process recreation and real Bluetooth calibration beside a parked vehicle. Preview captures and automated tests do not establish radio accuracy or physical command reliability.

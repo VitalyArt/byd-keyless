@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.vitalyart.bydkeyless.BuildConfig
 import com.vitalyart.bydkeyless.R
+import com.vitalyart.bydkeyless.localizedString
 import com.vitalyart.bydkeyless.KeylessApplication
 import com.vitalyart.bydkeyless.ble.ActionAvailability
 import com.vitalyart.bydkeyless.ble.CommandAvailability
@@ -39,15 +40,13 @@ data class MainUiState(
     val commandResult: UiMessage? = null,
     val commandInProgress: VehicleCommand? = null,
     val error: UiMessage? = null,
-    val nearSample: Int? = null,
-    val farSample: Int? = null,
+    val calibration: CalibrationSession = CalibrationSession(),
+    val theme: String = "system",
     val mode: KeylessMode = KeylessMode.OFF,
     val autoUnlock: Boolean = false,
     val autoLock: Boolean = false,
     val experimental: Boolean = false,
     val calibrated: Boolean = false,
-    val unlockDistanceMeters: Double = ProximityCalibration.DEFAULT_UNLOCK_DISTANCE_METERS,
-    val lockDistanceMeters: Double = ProximityCalibration.DEFAULT_LOCK_DISTANCE_METERS,
     val manualUnlockVerified: Boolean = false,
     val manualLockVerified: Boolean = false,
     val watchCountryCode: String = "UZ",
@@ -68,6 +67,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var calibrationJob: Job? = null
 
     init {
+        viewModelScope.launch { graph.store.changes.collect {
+            _ui.update { state -> state.copy(mode = graph.store.keylessMode, autoUnlock = graph.store.autoUnlock,
+                autoLock = graph.store.autoLock, manualUnlockVerified = graph.store.manualUnlockVerified,
+                manualLockVerified = graph.store.manualLockVerified, calibrated = graph.store.calibration() != null,
+                theme = graph.store.theme) }
+        } }
         viewModelScope.launch { KeylessService.running.collect { value -> _ui.update { it.copy(serviceRunning = value) } } }
         viewModelScope.launch { graph.ble.diagnostics.collect { value -> _ui.update { it.copy(diagnostics = value, bleError = value.error) } } }
         viewModelScope.launch { graph.ble.connectionState.collect { _ui.update { s -> s.copy(bleState = it, bleError = graph.ble.lastError) } } }
@@ -78,9 +83,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (quick.phase) {
                 QuickCommandPhase.IDLE -> Unit
                 QuickCommandPhase.CONNECTING, QuickCommandPhase.EXECUTING ->
-                    _ui.update { it.copy(commandResult = UiMessage(R.string.message_executing), error = null, commandInProgress = quick.command) }
+                    _ui.update { it.copy(commandResult = commandMessage(R.string.quick_action_progress, quick.command), error = null, commandInProgress = quick.command) }
                 QuickCommandPhase.SUCCESS -> {
-                    _ui.update { it.copy(commandResult = UiMessage(R.string.message_command_success), error = null, commandInProgress = null) }
+                    _ui.update { it.copy(commandResult = commandMessage(R.string.quick_action_success, quick.command), error = null, commandInProgress = null) }
                     scheduleMessageClear()
                 }
                 QuickCommandPhase.ERROR -> {
@@ -195,6 +200,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun commandMessage(resource: Int, command: VehicleCommand?): UiMessage = UiMessage(resource,
+        listOf(getApplication<KeylessApplication>().localizedString(_ui.value.language, command?.let(::commandLabel) ?: R.string.app_name)))
+
     fun execute(command: VehicleCommand, confirmed: Boolean = false) {
         if (command.dangerous && !confirmed) return
         if (_ui.value.commandInProgress != null) return
@@ -204,14 +212,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 availability.reason?.let { showError(UiMessage(it.messageResource())) }
                 return@launch
             }
-            _ui.update { it.copy(commandResult = UiMessage(R.string.message_executing), error = null, commandInProgress = command) }
+            _ui.update { it.copy(commandResult = commandMessage(R.string.quick_action_progress, command), error = null, commandInProgress = command) }
             val result = runCatching {
                 if (command.transport == CommandTransport.CLOUD) {
                     val token = _ui.value.token
                     if (token == null) CommandResult.Rejected(CommandError.NO_SESSION)
                     else graph.auth.executeCloudCommand(token, command)
+                } else if (command in com.vitalyart.bydkeyless.quick.QuickCommandContract.supportedCommands) {
+                    graph.quickCommands.execute(command)
                 } else {
-                    graph.ble.execute(command, graph.store.experimentalEnabled)
+                    val preflight = com.vitalyart.bydkeyless.quick.AndroidQuickCommandPreflight(getApplication())()
+                    if (preflight != null) CommandResult.Rejected(preflight)
+                    else {
+                        val ready = graph.ble.connectionState.value == BleConnectionState.READY || withTimeoutOrNull(20_000L) {
+                            graph.ble.connect(requireNotNull(_ui.value.profile))
+                            graph.ble.connectionState.first { it == BleConnectionState.READY || it == BleConnectionState.ERROR } == BleConnectionState.READY
+                        } == true
+                        if (ready) graph.ble.execute(command, graph.store.experimentalEnabled)
+                        else CommandResult.Failure(graph.ble.lastError ?: CommandError.CONNECTION_TIMEOUT)
+                    }
                 }
             }.getOrElse {
                 if (it is CancellationException) throw it
@@ -224,18 +243,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _ui.update { it.copy(
                 manualUnlockVerified = graph.store.manualUnlockVerified,
                 manualLockVerified = graph.store.manualLockVerified,
-                commandResult = when (result) {
-                    CommandResult.Success -> UiMessage(R.string.message_command_success)
+                commandResult = if (result == CommandResult.Success) commandMessage(R.string.quick_action_success, command) else null,
+                error = when (result) {
+                    CommandResult.Success -> null
                     is CommandResult.Rejected -> UiMessage(result.error.messageResource())
                     is CommandResult.Failure -> UiMessage(result.error.messageResource())
                 }, commandInProgress = null,
             ) }
             scheduleMessageClear()
+            if (command in com.vitalyart.bydkeyless.quick.QuickCommandContract.supportedCommands) {
+                val terminal = graph.quickCommands.state.value
+                delay(5_000L)
+                graph.quickCommands.clearTerminalState(terminal)
+            }
         }
     }
 
     fun availability(command: VehicleCommand): ActionAvailability = CommandAvailability.evaluate(
-        profile = _ui.value.profile, hasSession = _ui.value.token != null, state = _ui.value.bleState,
+        profile = _ui.value.profile, hasSession = _ui.value.token != null, state = BleConnectionState.READY,
         command = command, experimentalEnabled = _ui.value.experimental,
     ).let { availability ->
         if (_ui.value.commandInProgress != null && availability.supported) availability.copy(enabled = false) else availability
@@ -250,48 +275,90 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleMessageClear()
     }
 
-    fun captureNear() = captureCalibration(near = true)
-    fun captureFar() = captureCalibration(near = false)
-    private fun captureCalibration(near: Boolean) {
-        if (calibrationJob?.isActive == true) return
-        calibrationJob = viewModelScope.launch {
-            _ui.update { it.copy(commandResult = UiMessage(R.string.calibration_measuring), error = null) }
-            val samples = mutableListOf<Int>()
-            val initial = graph.ble.telemetry.value
-            graph.ble.requestCalibrationSampling()
-            val completed = withTimeoutOrNull(12_000L) {
-                graph.ble.telemetry.filter {
-                    it.rssi != null && it.connectionGeneration == initial.connectionGeneration && it.rssiSequence > initial.rssiSequence &&
-                        it.rssiAtMillis?.let { at -> android.os.SystemClock.elapsedRealtime() - at in 0..4_000L } == true &&
-                        graph.ble.connectionState.value == BleConnectionState.READY
+    fun setTheme(value: String) {
+        graph.store.theme = value
+        _ui.update { it.copy(theme = value) }
+        com.vitalyart.bydkeyless.widget.QuickControlWidget.updateAll(getApplication())
+    }
+
+    fun beginCalibration(onlyOpen: Boolean? = null, test: Boolean = false) {
+        if (_ui.value.commandInProgress != null) return
+        val saved = graph.store.calibration()
+        _ui.update { it.copy(calibration = CalibrationSession(
+            step = CalibrationStep.PREPARE, onlyOpen = onlyOpen,
+            open = if (onlyOpen != null || test) saved?.unlockThreshold else null,
+            close = if (onlyOpen != null || test) saved?.lockThreshold else null,
+        )) }
+        testing = test
+    }
+    private var testing = false
+
+    fun advanceCalibration() {
+        val draft = _ui.value.calibration
+        when (draft.step) {
+            CalibrationStep.PREPARE -> {
+                if (_ui.value.bleState != BleConnectionState.READY) {
+                    calibrationError(R.string.error_key_not_ready); return
                 }
-                    .distinctUntilChangedBy { it.connectionGeneration to it.rssiSequence }.take(8).collect { samples += requireNotNull(it.rssi) }
-                true
-            } == true
-            if (!completed || samples.maxOrNull()!! - samples.minOrNull()!! > 12) {
-                showError(UiMessage(R.string.calibration_unstable))
-                return@launch
+                // Persist first: service restarts cannot re-enable automatic commands.
+                if (!graph.store.pauseAutomation()) { calibrationError(R.string.error_calibration_save); return }
+                configureKeyless(KeylessMode.AUTO_UNLOCK_LOCK, false, false)
+                _ui.update { it.copy(calibration = draft.copy(step = if (testing) CalibrationStep.TEST else if (draft.onlyOpen == false) CalibrationStep.CLOSE else CalibrationStep.OPEN, error = null)) }
             }
-            val median = samples.sorted().let { (it[3] + it[4]) / 2 }
-            _ui.update { if (near) it.copy(nearSample = median, commandResult = UiMessage(R.string.calibration_sample_ready))
-                else it.copy(farSample = median, commandResult = UiMessage(R.string.calibration_sample_ready)) }
-            scheduleMessageClear()
+            CalibrationStep.OPEN -> if (draft.open != null) {
+                _ui.update { it.copy(calibration = draft.copy(step = if (draft.onlyOpen == true) CalibrationStep.REVIEW else CalibrationStep.CLOSE, error = null)) }
+            }
+            CalibrationStep.CLOSE -> if (draft.close != null) _ui.update { it.copy(calibration = draft.copy(step = CalibrationStep.REVIEW, error = null)) }
+            else -> Unit
+        }
+    }
+
+    private fun calibrationError(resource: Int) {
+        _ui.update { it.copy(calibration = it.calibration.copy(measuring = false, error = UiMessage(resource))) }
+    }
+
+    fun cancelMeasurement() {
+        calibrationJob?.cancel()
+        if (_ui.value.calibration.measuring) calibrationError(R.string.measurement_interrupted)
+    }
+    fun closeCalibration() {
+        cancelMeasurement()
+        _ui.update { it.copy(calibration = CalibrationSession()) }
+    }
+    fun previousCalibrationStep() {
+        cancelMeasurement()
+        _ui.update { it.copy(calibration = it.calibration.copy(step = when (it.calibration.step) {
+            CalibrationStep.REVIEW -> if (it.calibration.onlyOpen == true) CalibrationStep.OPEN else CalibrationStep.CLOSE
+            CalibrationStep.CLOSE -> if (it.calibration.onlyOpen == false) CalibrationStep.PREPARE else CalibrationStep.OPEN
+            else -> CalibrationStep.PREPARE
+        }, error = null)) }
+    }
+    fun captureCalibration() {
+        if (calibrationJob?.isActive == true) return
+        val near = _ui.value.calibration.step == CalibrationStep.OPEN
+        if (_ui.value.calibration.step !in setOf(CalibrationStep.OPEN, CalibrationStep.CLOSE)) return
+        calibrationJob = viewModelScope.launch {
+            _ui.update { it.copy(calibration = it.calibration.copy(measuring = true, samples = 0, error = null,
+                open = if (near) null else it.calibration.open, close = if (near) it.calibration.close else null)) }
+            val median = measureCalibration(graph.ble.telemetry, graph.ble.connectionState, android.os.SystemClock::elapsedRealtime) { count ->
+                _ui.update { it.copy(calibration = it.calibration.copy(samples = count)) }
+            }
+            if (median == null) { calibrationError(R.string.calibration_unstable); return@launch }
+            _ui.update { it.copy(calibration = it.calibration.copy(measuring = false,
+                open = if (near) median.toDouble() else it.calibration.open,
+                close = if (near) it.calibration.close else median.toDouble())) }
         }
     }
     fun saveCalibration() {
-        val near = _ui.value.nearSample ?: return
-        val far = _ui.value.farSample ?: return
-        if (near <= far) { showError(UiMessage(R.string.error_near_signal)); return }
-        val calibration = ProximityCalibration(near, far, _ui.value.unlockDistanceMeters, _ui.value.lockDistanceMeters)
-        val saved = graph.store.saveCalibration(calibration)
-        val persisted = graph.store.calibration()
-        if (!saved || persisted?.nearRssi != near || persisted.farRssi != far) {
-            showError(UiMessage(R.string.error_calibration_save))
-            return
+        val draft = _ui.value.calibration
+        val near = draft.open ?: return
+        val far = draft.close ?: return
+        if (near <= far) { calibrationError(R.string.error_near_signal); return }
+        if (!graph.store.saveCalibration(ProximityCalibration(near, far))) {
+            calibrationError(R.string.error_calibration_save); return
         }
-        _ui.update { it.copy(calibrated = true, commandResult = UiMessage(R.string.calibration_saved), error = null) }
-        scheduleMessageClear()
-        graph.proximity.configure(_ui.value.mode, persisted, _ui.value.autoUnlock, _ui.value.autoLock)
+        graph.proximity.configure(_ui.value.mode, graph.store.calibration(), false, false)
+        _ui.update { it.copy(calibrated = true, calibration = draft.copy(step = CalibrationStep.SAVED, error = null)) }
     }
 
     fun configureKeyless(mode: KeylessMode = _ui.value.mode, autoUnlock: Boolean = _ui.value.autoUnlock, autoLock: Boolean = _ui.value.autoLock) {
@@ -300,16 +367,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _ui.update { it.copy(mode = mode, autoUnlock = autoUnlock, autoLock = autoLock) }
         if (mode == KeylessMode.OFF) { startJob?.cancel(); KeylessService.stop(getApplication()) }
         else startBackgroundKey()
-    }
-
-    fun setProximityDistances(unlockMeters: Double = _ui.value.unlockDistanceMeters, lockMeters: Double = _ui.value.lockDistanceMeters) {
-        val unlock = unlockMeters.coerceIn(0.5, 3.0)
-        val lock = lockMeters.coerceIn(2.0, 10.0)
-        if (unlock >= lock) return
-        graph.store.unlockDistanceMeters = unlock
-        graph.store.lockDistanceMeters = lock
-        _ui.update { it.copy(unlockDistanceMeters = unlock, lockDistanceMeters = lock) }
-        graph.proximity.configure(_ui.value.mode, graph.store.calibration(), _ui.value.autoUnlock, _ui.value.autoLock)
     }
 
     fun setExperimental(enabled: Boolean) { graph.store.experimentalEnabled = enabled; _ui.update { it.copy(experimental = enabled) } }
@@ -324,6 +381,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun logout() {
+        closeCalibration()
         startJob?.cancel()
         calibrationJob?.cancel()
         polling?.cancel()
@@ -342,11 +400,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             token = session?.first, profile = session?.second, mode = graph.store.keylessMode,
             autoUnlock = graph.store.autoUnlock, autoLock = graph.store.autoLock,
             experimental = graph.store.experimentalEnabled,
-            nearSample = calibration?.nearRssi,
-            farSample = calibration?.farRssi,
+            theme = graph.store.theme,
             calibrated = calibration != null,
-            unlockDistanceMeters = calibration?.unlockDistanceMeters ?: graph.store.unlockDistanceMeters,
-            lockDistanceMeters = calibration?.lockDistanceMeters ?: graph.store.lockDistanceMeters,
             manualUnlockVerified = graph.store.manualUnlockVerified,
             manualLockVerified = graph.store.manualLockVerified,
             watchCountryCode = WatchRegions.byCode(graph.store.watchCountryCode).code,

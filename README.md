@@ -7,25 +7,23 @@ An experimental ARM64 Android app for using a BYD Sealion 7 watch credential as 
 ## Features and compatibility
 
 - QR authorization, vehicle profile and Bluetooth key retrieval through the BYD Watch API.
-- Manual vehicle controls, capability-gated experimental commands, passive entry and calibrated automatic unlock/lock.
+- Manual vehicle controls, capability-gated experimental commands, point-calibrated automatic unlock/lock, light/dark themes and a guided setup.
 - Notification actions, a home-screen widget and launcher shortcuts.
 - English, Russian and Uzbek interface translations.
 
 Requires Android 8.0 (API 26) or later and an `arm64-v8a` device. Only ARM64 native libraries are bundled: x86/x86_64 emulators and other ABIs are not supported. The prototype targets the Sealion 7; compatibility with other vehicles, account regions or future BYD backend versions is not guaranteed. Available commands depend on the vehicle's advertised capabilities and key validity.
 
-## Screenshots
+## Interface previews
 
-Device captures of the English interface, with automatic access disabled. The digital-key screen shows an active key; the other screens were captured with the key stopped or after sign-out. The QR sign-in image was edited to completely hide its authorization code. No vehicle commands were invoked for these captures. Available controls depend on the vehicle and connection state.
+The redesign uses three destinations: Vehicle, Auto access and Settings. The setup wizard measures opening and closing points directly; it does not ask you to measure metres. Bluetooth signal strength indicates a zone, with the existing signal stability delays still applied.
 
-| Welcome | QR sign-in (code hidden) | Digital key |
-| :---: | :---: | :---: |
-| [<img src="docs/screenshots/welcome.png" width="260" alt="Welcome screen with BYD region selection and Create QR code button">](docs/screenshots/welcome.png) | [<img src="docs/screenshots/qr-sign-in-redacted.png" width="260" alt="QR sign-in screen with the entire authorization code covered by a QR CODE HIDDEN panel">](docs/screenshots/qr-sign-in-redacted.png) | [<img src="docs/screenshots/key.png" width="260" alt="Main screen showing the vehicle, masked VIN and digital key status">](docs/screenshots/key.png) |
+Screenshots and capture instructions are in [the screenshot guide](docs/screenshots/README.md). New design previews use an isolated `.preview` package and fictional vehicle data. They are visual examples, not evidence of a working vehicle connection.
 
-| Vehicle controls | Access modes | Safety and background operation |
-| :---: | :---: | :---: |
-| [<img src="docs/screenshots/controls.png" width="260" alt="Vehicle controls showing unlock, lock, trunk and find-vehicle actions">](docs/screenshots/controls.png) | [<img src="docs/screenshots/access-settings.png" width="260" alt="Access settings showing Off, Passive entry and Automatic access, with automation disabled">](docs/screenshots/access-settings.png) | [<img src="docs/screenshots/safety-settings.png" width="260" alt="Safety settings, English language selection and background-operation guidance">](docs/screenshots/safety-settings.png) |
+## Upgrade behavior
 
-Select a screenshot to view it at full resolution. See the [screenshot capture notes](docs/screenshots/README.md) for capture conditions and privacy edits.
+Passive Entry has been removed. A saved Passive Entry preference migrates to Off with both automatic command switches disabled. Accounts and calibration remain. Existing distance-based calibration is migrated to its effective signal thresholds without rounding; the new interface displays zones rather than metres.
+
+Starting calibration or a zone check persistently disables both automatic command switches. Saving, cancelling or restarting does not re-enable them. The zone check sends no automatic commands. Measurements collect eight fresh readings within 12 seconds and reject a spread over 12 dBm. Losing the connection or backgrounding the screen interrupts the current measurement.
 
 ## Download
 
@@ -77,7 +75,7 @@ This uses Android's local debug signing key. No release signing credentials are 
 2. Create a QR code in the app, scan it in BYD AUTO, choose the Sealion 7 and approve the watch sign-in.
 3. Grant the requested Bluetooth/location and notification permissions, then start the key while the app is visible.
 4. Verify manual unlock and lock while standing next to the parked car.
-5. Capture RSSI at approximately 1 m and 5 m before enabling automatic access.
+5. Open Auto access → Set up points. Measure where you want the vehicle to open, then where it should lock, and save. Enable automatic opening/closing separately.
 
 Auto unlock and auto lock remain disabled until calibration and successful manual lock/unlock. Auto lock additionally requires a BLE command response no older than 30 seconds to confirm closures are closed. Calibration collects 8 signal samples. An unconfirmed automatic command pauses automation until a manual lock/unlock succeeds. See [background reliability changes and device checks](docs/BACKGROUND-RELIABILITY.md).
 
@@ -90,8 +88,8 @@ Auto unlock and auto lock remain disabled until calibration and successful manua
 
 ## Quick controls
 
-- The foreground-service notification shows Unlock, Lock and Trunk as three explicit actions. It does not contain an emergency-stop action.
-- Add the **BYD Keyless** widget from the Android widget picker for separate Unlock, Lock and Trunk buttons. The same actions are available as launcher shortcuts by long-pressing the app icon.
+- The foreground-service notification uses the Android system template and shows supported Unlock, Lock and Trunk actions. Actions are temporarily removed while a command is running; expanded text describes automation status. It does not contain an emergency-stop action.
+- Add the **BYD Keyless** widget from the Android widget picker for separate Unlock, Lock and Trunk buttons. It adapts between compact 4×1 and expanded 4×2 layouts and follows the selected light/dark theme. Existing widgets update in place. The same actions are available as launcher shortcuts by long-pressing the app icon.
 - Quick actions connect the BLE key on demand and wait up to 20 seconds for authentication before failing.
 
 Notification and widget controls execute without device authentication and may be available from the lock screen. Launcher shortcuts now show a confirmation dialog before sending a command. Only enable notification access on a phone you trust.
@@ -109,9 +107,9 @@ Notification and widget controls execute without device authentication and may b
 - Experimental commands with no confirmed capability remain visible but disabled. Commands capable of moving or powering the vehicle also require the system device credential.
 - **Emergency stop is in the app's Settings.** It disables the proximity mode and automatic unlock/lock, disconnects Bluetooth and stops the foreground service. Android's Force stop can also be used to terminate the app. Quick controls may reconnect when invoked again.
 - Force-stop, OEM battery restrictions and revoked Bluetooth permission can prevent background key operation. Do not rely on the app as your only means of access or as proof that the car is locked.
-- BLE RSSI provides a calibrated proximity zone, not a precise physical distance.
+- BLE RSSI provides a calibrated proximity zone, not a physical distance.
 
-Before testing on a real vehicle, run the staged sequence: connect/read only → manual unlock/lock → trunk/find car → passive handle → calibrated auto unlock → observed auto lock. Keep the vehicle parked and treat every additional command as unverified until the car advertises the capability and returns a successful acknowledgement.
+Before testing on a real vehicle, run the staged sequence: connect/read only → manual unlock/lock → trunk/find car → calibrated auto unlock → observed auto lock. Keep the vehicle parked and treat every additional command as unverified until the car advertises the capability and returns a successful acknowledgement.
 
 ## Tests and CI
 

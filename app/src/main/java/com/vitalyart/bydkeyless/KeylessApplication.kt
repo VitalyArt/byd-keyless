@@ -32,7 +32,7 @@ class KeylessApplication : Application() {
             else LocaleListCompat.forLanguageTags(language),
         )
         val native = BydNativeFacade()
-        val ble = AndroidBleVehicleController(this, native, calibration = store::calibration, keylessMode = { store.keylessMode })
+        val ble = AndroidBleVehicleController(this, native)
         val proximity = DefaultProximityKeyManager(ble, canUnlock = { store.manualUnlockVerified }, canLock = { store.manualLockVerified })
         val quickCommands = QuickCommandExecutor(
             sessionProvider = store::loadSession,
@@ -50,9 +50,17 @@ class KeylessApplication : Application() {
             updateManager = updateManager,
         )
         QuickControlWidget.updateAll(this)
+        applicationScope.launch { store.changes.collectLatest { QuickControlWidget.updateAll(this@KeylessApplication) } }
+        applicationScope.launch { quickCommands.state.collectLatest { QuickControlWidget.updateAll(this@KeylessApplication) } }
+        applicationScope.launch { proximity.state.collectLatest { QuickControlWidget.updateAll(this@KeylessApplication) } }
         applicationScope.launch {
             ble.connectionState.collectLatest { QuickControlWidget.updateAll(this@KeylessApplication) }
         }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        QuickControlWidget.updateAll(this, force = true)
     }
 
     fun selectWatchCountry(code: String) {
