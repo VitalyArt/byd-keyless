@@ -44,6 +44,9 @@ data class MainUiState(
     val mode: KeylessMode = KeylessMode.OFF,
     val autoUnlock: Boolean = false,
     val autoLock: Boolean = false,
+    val hotspotOnConnect: Boolean = false,
+    val hotspotOffOnDisconnect: Boolean = false,
+    val hotspotOffDelayMillis: Long = 60_000L,
     val experimental: Boolean = false,
     val calibrated: Boolean = false,
     val unlockDistanceMeters: Double = ProximityCalibration.DEFAULT_UNLOCK_DISTANCE_METERS,
@@ -323,6 +326,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         graph.updateManager.setIncludePrereleases(enabled)
     }
 
+    fun configureHotspot(
+        onConnect: Boolean = _ui.value.hotspotOnConnect,
+        offOnDisconnect: Boolean = _ui.value.hotspotOffOnDisconnect,
+        offDelayMillis: Long = _ui.value.hotspotOffDelayMillis,
+    ) {
+        graph.store.hotspotOnConnect = onConnect
+        graph.store.hotspotOffOnDisconnect = offOnDisconnect
+        graph.store.hotspotOffDelayMillis = offDelayMillis
+        _ui.update { it.copy(
+            hotspotOnConnect = onConnect,
+            hotspotOffOnDisconnect = offOnDisconnect,
+            hotspotOffDelayMillis = offDelayMillis.coerceAtLeast(0L),
+        ) }
+        graph.hotspotAutomation.refreshSettings()
+    }
+
     fun logout() {
         startJob?.cancel()
         calibrationJob?.cancel()
@@ -341,6 +360,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return MainUiState(
             token = session?.first, profile = session?.second, mode = graph.store.keylessMode,
             autoUnlock = graph.store.autoUnlock, autoLock = graph.store.autoLock,
+            hotspotOnConnect = graph.store.hotspotOnConnect,
+            hotspotOffOnDisconnect = graph.store.hotspotOffOnDisconnect,
+            hotspotOffDelayMillis = graph.store.hotspotOffDelayMillis,
             experimental = graph.store.experimentalEnabled,
             nearSample = calibration?.nearRssi,
             farSample = calibration?.farRssi,

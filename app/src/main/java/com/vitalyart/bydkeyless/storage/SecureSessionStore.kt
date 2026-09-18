@@ -98,6 +98,9 @@ class SecureSessionStore(context: Context) {
             .putString("keyless_mode", KeylessMode.OFF.name)
             .putBoolean("auto_unlock", false)
             .putBoolean("auto_lock", false)
+            .putBoolean("hotspot_on_connect", false)
+            .putBoolean("hotspot_off_disconnect", false)
+            .remove("hotspot_off_delay_ms")
             .putBoolean("experimental", false)
             .putBoolean("verified_unlock", false)
             .putBoolean("verified_lock", false)
@@ -117,6 +120,15 @@ class SecureSessionStore(context: Context) {
     var autoLock: Boolean
         get() = prefs.getBoolean("auto_lock", false)
         set(value) { prefs.edit().putBoolean("auto_lock", value).apply() }
+    var hotspotOnConnect: Boolean
+        get() = prefs.getBoolean("hotspot_on_connect", false)
+        set(value) { prefs.edit().putBoolean("hotspot_on_connect", value).apply() }
+    var hotspotOffOnDisconnect: Boolean
+        get() = prefs.getBoolean("hotspot_off_disconnect", false)
+        set(value) { prefs.edit().putBoolean("hotspot_off_disconnect", value).apply() }
+    var hotspotOffDelayMillis: Long
+        get() = prefs.getLong("hotspot_off_delay_ms", DEFAULT_HOTSPOT_OFF_DELAY_MS)
+        set(value) { prefs.edit().putLong("hotspot_off_delay_ms", value.coerceAtLeast(0L)).apply() }
     var experimentalEnabled: Boolean
         get() = prefs.getBoolean("experimental", false)
         set(value) { prefs.edit().putBoolean("experimental", value).apply() }
@@ -152,6 +164,9 @@ class SecureSessionStore(context: Context) {
                 .putString("keyless_mode", KeylessMode.OFF.name)
                 .putBoolean("auto_unlock", false)
                 .putBoolean("auto_lock", false)
+                .putBoolean("hotspot_on_connect", false)
+                .putBoolean("hotspot_off_disconnect", false)
+                .remove("hotspot_off_delay_ms")
                 .putBoolean("experimental", false)
                 .putBoolean("verified_unlock", false)
                 .putBoolean("verified_lock", false)
@@ -185,6 +200,10 @@ class SecureSessionStore(context: Context) {
             init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build())
         }.generateKey()
+    }
+
+    companion object {
+        const val DEFAULT_HOTSPOT_OFF_DELAY_MS = 60_000L
     }
 }
 

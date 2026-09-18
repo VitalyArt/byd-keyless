@@ -5,6 +5,9 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import com.vitalyart.bydkeyless.ble.AndroidBleVehicleController
 import com.vitalyart.bydkeyless.ble.BydNativeFacade
+import com.vitalyart.bydkeyless.hotspot.AndroidHotspotController
+import com.vitalyart.bydkeyless.hotspot.HotspotAutomationManager
+import com.vitalyart.bydkeyless.hotspot.HotspotAutomationSettings
 import com.vitalyart.bydkeyless.network.BydWatchAuthRepository
 import com.vitalyart.bydkeyless.network.WatchConfig
 import com.vitalyart.bydkeyless.proximity.DefaultProximityKeyManager
@@ -39,6 +42,11 @@ class KeylessApplication : Application() {
             controller = ble,
             preflight = AndroidQuickCommandPreflight(this),
         )
+        val hotspotAutomation = HotspotAutomationManager(
+            settings = { HotspotAutomationSettings(store.hotspotOnConnect, store.hotspotOffOnDisconnect, store.hotspotOffDelayMillis) },
+            controller = AndroidHotspotController(this),
+            scope = applicationScope,
+        )
         val updateManager = AppUpdateManager(this, store, applicationScope)
         graph = AppGraph(
             store = store,
@@ -47,11 +55,15 @@ class KeylessApplication : Application() {
             proximity = proximity,
             native = native,
             quickCommands = quickCommands,
+            hotspotAutomation = hotspotAutomation,
             updateManager = updateManager,
         )
         QuickControlWidget.updateAll(this)
         applicationScope.launch {
-            ble.connectionState.collectLatest { QuickControlWidget.updateAll(this@KeylessApplication) }
+            ble.connectionState.collectLatest {
+                hotspotAutomation.onConnectionStateChanged(it)
+                QuickControlWidget.updateAll(this@KeylessApplication)
+            }
         }
     }
 
@@ -68,5 +80,6 @@ data class AppGraph(
     val proximity: DefaultProximityKeyManager,
     val native: BydNativeFacade,
     val quickCommands: QuickCommandExecutor,
+    val hotspotAutomation: HotspotAutomationManager,
     val updateManager: AppUpdateManager,
 )

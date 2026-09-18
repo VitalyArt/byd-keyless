@@ -513,6 +513,24 @@ private fun SettingsScreen(
                 if (!state.calibrated || !state.manualUnlockVerified || !state.manualLockVerified) Text(stringResource(R.string.automation_prerequisites), color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
             }
         }
+        item {
+            SectionCard(R.string.hotspot_automation, Icons.Rounded.WifiTethering) {
+                SettingSwitch(R.string.hotspot_on_connect, state.hotspotOnConnect, true) {
+                    vm.configureHotspot(onConnect = it, offOnDisconnect = state.hotspotOffOnDisconnect && it)
+                }
+                SettingSwitch(
+                    R.string.hotspot_off_disconnect,
+                    state.hotspotOffOnDisconnect,
+                    state.hotspotOnConnect,
+                ) { vm.configureHotspot(offOnDisconnect = it) }
+                HotspotDelaySetting(
+                    selectedMillis = state.hotspotOffDelayMillis,
+                    enabled = state.hotspotOnConnect && state.hotspotOffOnDisconnect,
+                    onSelected = { vm.configureHotspot(offDelayMillis = it) },
+                )
+                Text(stringResource(R.string.hotspot_permission_note), color = TextSecondary, fontSize = 12.sp, lineHeight = 17.sp)
+            }
+        }
         item { DistanceSettingsCard(state, vm) }
         item { CalibrationCard(state, vm) }
         item {
@@ -721,6 +739,38 @@ private fun SettingSwitch(@StringRes title: Int, checked: Boolean, enabled: Bool
         Text(stringResource(title), Modifier.weight(1f), color = if (enabled) TextPrimary else TextSecondary)
         Switch(checked = checked, onCheckedChange = change, enabled = enabled)
     }
+}
+
+@Composable
+private fun HotspotDelaySetting(selectedMillis: Long, enabled: Boolean, onSelected: (Long) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val options = listOf(
+        0L to R.string.hotspot_delay_immediate,
+        30_000L to R.string.hotspot_delay_30_seconds,
+        60_000L to R.string.hotspot_delay_1_minute,
+        300_000L to R.string.hotspot_delay_5_minutes,
+        600_000L to R.string.hotspot_delay_10_minutes,
+        1_800_000L to R.string.hotspot_delay_30_minutes,
+    )
+    Text(stringResource(R.string.hotspot_off_delay), color = if (enabled) TextPrimary else TextSecondary)
+    OutlinedButton({ open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
+        Text(stringResource(options.firstOrNull { it.first == selectedMillis }?.second ?: R.string.hotspot_delay_1_minute))
+        Spacer(Modifier.weight(1f)); Icon(Icons.Rounded.ExpandMore, null)
+    }
+    if (open) AlertDialog(
+        onDismissRequest = { open = false },
+        title = { Text(stringResource(R.string.hotspot_off_delay)) },
+        text = { Column { options.forEach { (millis, label) ->
+            Row(
+                Modifier.fillMaxWidth().clickable { onSelected(millis); open = false }.heightIn(min = 52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                RadioButton(selectedMillis == millis, { onSelected(millis); open = false })
+                Text(stringResource(label))
+            }
+        } } },
+        confirmButton = { TextButton({ open = false }) { Text(stringResource(R.string.close)) } },
+    )
 }
 
 @Composable

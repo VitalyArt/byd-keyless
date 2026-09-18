@@ -93,6 +93,17 @@
     <string name="auto_unlock">Unlock on approach</string>
     <string name="auto_lock">Lock when leaving</string>
     <string name="automation_prerequisites">Complete calibration and confirm manual lock and unlock first.</string>
+    <string name="hotspot_automation">Wi-Fi hotspot</string>
+    <string name="hotspot_on_connect">Turn on when connected to the vehicle</string>
+    <string name="hotspot_off_disconnect">Turn off after disconnecting</string>
+    <string name="hotspot_off_delay">Turn-off delay</string>
+    <string name="hotspot_delay_immediate">Immediately</string>
+    <string name="hotspot_delay_30_seconds">After 30 seconds</string>
+    <string name="hotspot_delay_1_minute">After 1 minute</string>
+    <string name="hotspot_delay_5_minutes">After 5 minutes</string>
+    <string name="hotspot_delay_10_minutes">After 10 minutes</string>
+    <string name="hotspot_delay_30_minutes">After 30 minutes</string>
+    <string name="hotspot_permission_note">Automatic hotspot control depends on system support and permission from the phone manufacturer.</string>
     <string name="distance_thresholds_title">Automatic access distances</string>
     <string name="distance_thresholds_description">Choose when the vehicle should unlock as you approach and lock after you leave.</string>
     <string name="unlock_distance">Unlock at approximately %1$s m</string>
